@@ -1,0 +1,26 @@
+{
+  "name": "filesystem",
+  "description": "Sandboxed filesystem read/write access, limited to one or more root directories. No secrets. Useful for letting Claude Code work with files outside the current project dir (e.g. scratch dirs, shared notes, downloaded assets).",
+  "scope": "user",
+  "upstream": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+  "install": {
+    "command": "npm",
+    "args": ["install", "-g", "@modelcontextprotocol/server-filesystem"]
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
+      "${HOME}/scratch",
+      "${HOME}/Documents/claude-workbench"
+    ]
+  },
+  "secrets_required": [],
+  "notes": [
+    "Every positional arg after the package name is a root directory the server is allowed to read/write. Anything outside these paths is forbidden.",
+    "Never pass $HOME or / as a root unless you really mean it — this server has no per-subdir ACL, it's all-or-nothing per root.",
+    "On first use, create the scratch dirs: mkdir -p ~/scratch ~/Documents/claude-workbench",
+    "Pair with the universal PreToolUse hook in settings.json which already blocks writes to credential-like paths even if they're inside an allowed root."
+  ]
+}

@@ -19,8 +19,8 @@ next session on every other machine picks it up.
 | Universal `PreToolUse` hooks | ✅ protects secret files + blocks destructive Bash |
 | Slash commands | **19** — generic workflow commands + notebook capture |
 | Skills | **9** — generic library, cross-project |
-| MCP config scaffold | ✅ `claude/mcp/` with README |
-| Secrets (sops + age) | ✅ drop-in + scaffold for `Monty-CNS-Secrets` + walkthrough |
+| MCP servers tracked | **3** — github, filesystem, fetch (+ `install-servers.sh`) |
+| Secrets (sops + age) | ✅ `activate-secrets.sh` one-command installer, tested end-to-end |
 | Self-hosting guide | ✅ plain SSH git / Forgejo / Tailscale |
 
 ## Design principles
@@ -50,6 +50,7 @@ next session on every other machine picks it up.
 Monty-CNS/
 ├── README.md                          # you are here
 ├── bootstrap.sh                       # symlink installer — idempotent, merge-mode
+├── activate-secrets.sh                # one-command sops+age setup, tested end-to-end
 ├── .gitignore                         # blocks secrets, session state, MCP runtime data
 │
 ├── claude/                            # mirrors ~/.claude — tracked, portable files only
@@ -64,8 +65,13 @@ Monty-CNS/
 │   ├── commands/                      # slash commands (19 — see below)
 │   ├── skills/                        # cross-project skill library (9 — see below)
 │   │   └── README.md                  # library philosophy + community mining workflow
-│   └── mcp/                           # MCP server definitions (no secrets)
-│       └── README.md                  # portable MCP config conventions
+│   └── mcp/                           # MCP server definitions
+│       ├── README.md                  # portable MCP config conventions
+│       ├── install-servers.sh         # reads servers/*.json + runs claude mcp add
+│       └── servers/
+│           ├── github.json
+│           ├── filesystem.json
+│           └── fetch.json
 │
 ├── scaffold/
 │   └── secrets-repo/                  # ready-to-copy contents for Monty-CNS-Secrets
@@ -84,11 +90,33 @@ Monty-CNS/
 
 ## Install on a new machine
 
+Three commands, in order, get you from zero to a fully-wired machine:
+
 ```bash
+# 1. Clone + symlink the dotfiles
 git clone <your-remote>:ezmonty/Monty-CNS.git ~/src/Monty-CNS
 cd ~/src/Monty-CNS
-./bootstrap.sh --dry-run   # preview what will change
-./bootstrap.sh             # create the symlinks under ~/.claude
+./bootstrap.sh                        # create the symlinks under ~/.claude
+
+# 2. Activate secrets (one-command sops + age install + key + scaffold + test)
+./activate-secrets.sh                 # interactive; --yes for unattended
+# (skip this on machines where you don't want secrets synced)
+
+# 3. Install the tracked MCP servers
+~/.claude/mcp/install-servers.sh      # idempotent, reads claude/mcp/servers/*.json
+```
+
+Run them in that order — `bootstrap.sh` sets up the symlinks that the
+other two need, `activate-secrets.sh` gets the env vars flowing, then the
+MCP servers can launch with their secrets already in place.
+
+**Preview any of them first:**
+
+```bash
+./bootstrap.sh --dry-run              # show what symlinks would change
+./activate-secrets.sh --status        # report current secrets state
+~/.claude/mcp/install-servers.sh --dry-run
+~/.claude/mcp/install-servers.sh --list
 ```
 
 Pre-existing files at conflicting paths are moved to
@@ -97,8 +125,9 @@ exist at the destination are merged (children symlinked individually)
 rather than replaced, so you don't lose host-provided skills or local
 experiments.
 
-For secrets, follow [`docs/secrets-setup.md`](docs/secrets-setup.md) after
-the first `bootstrap.sh` run.
+For deeper walkthroughs see [`docs/secrets-setup.md`](docs/secrets-setup.md)
+(sops + age step-by-step) and [`claude/mcp/README.md`](claude/mcp/README.md)
+(MCP server conventions).
 
 ## Update
 

@@ -1,0 +1,22 @@
+{
+  "name": "fetch",
+  "description": "HTTP fetch — retrieve and convert web pages to markdown. No secrets. Useful for reading docs, blog posts, GitHub READMEs, etc. without leaving the session.",
+  "scope": "user",
+  "upstream": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+  "install": {
+    "command": "pip",
+    "args": ["install", "mcp-server-fetch"],
+    "alt_install": "uvx mcp-server-fetch  (recommended — no global pip install)"
+  },
+  "config": {
+    "command": "uvx",
+    "args": ["mcp-server-fetch"]
+  },
+  "secrets_required": [],
+  "notes": [
+    "Prefer uvx over pip install — keeps the server isolated in its own venv per invocation.",
+    "This server respects robots.txt by default. Override with --ignore-robots-txt as an arg if you need to.",
+    "It does NOT execute JavaScript; single-page apps may return empty content. For JS rendering, use a browser-based MCP server instead (playwright-based ones exist but are heavier).",
+    "Built-in Claude Code WebFetch covers most cases; this server is useful when you want the MCP protocol specifically (for tool use in subagents, etc.)."
+  ]
+}

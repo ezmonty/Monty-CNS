@@ -26,6 +26,9 @@ claude/mcp/**/state/
 claude/mcp/**/cache/
 claude/mcp/**/*.sqlite*
 claude/mcp/**/node_modules/
+# File-based secrets decrypted at runtime — plaintext, 0600, NEVER commit
+claude/mcp/keys/
+claude/mcp/keys/**
 
 # --- OS / editor junk ---
 .DS_Store

@@ -1,0 +1,27 @@
+{
+  "name": "github",
+  "description": "GitHub API access — read repos, PRs, issues, files; create branches, commits, PRs; search code. Uses a personal access token.",
+  "scope": "user",
+  "upstream": "https://github.com/github/github-mcp-server",
+  "install": {
+    "command": "npm",
+    "args": ["install", "-g", "@modelcontextprotocol/server-github"],
+    "alt_install": "Alternatively, use Docker: docker pull ghcr.io/github/github-mcp-server"
+  },
+  "config": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"]
+  },
+  "secrets_required": [
+    {
+      "env": "GITHUB_PERSONAL_ACCESS_TOKEN",
+      "description": "GitHub PAT with scopes: repo (full), read:org, read:user. Create at https://github.com/settings/tokens",
+      "store_in": "env.sops.yaml"
+    }
+  ],
+  "notes": [
+    "The MCP server reads GITHUB_PERSONAL_ACCESS_TOKEN directly from its env — no translation needed if you store the var under that exact name in env.sops.yaml.",
+    "Use a fine-grained PAT (settings/personal-access-tokens) and limit it to only the repos you want Claude Code to touch. Broad classic tokens are a liability.",
+    "For org-scoped access, the token owner must be a member of the org with the right permissions."
+  ]
+}
