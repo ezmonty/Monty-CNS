@@ -2047,3 +2047,185 @@ worklog entry. The Explore agent I started (and which was still
 running when the user exited plan mode) would answer most of
 these if its output is available to the first operator claiming
 phase-0 work.
+
+---
+
+## 9. Appendices
+
+### Appendix A — Test matrix
+
+Which test categories apply to which phase. Rows are phases,
+columns are test types, cells say which workstream owns it.
+
+| Phase | Unit | Integration | E2E | Smoke | Failure injection | Security | Load | Chaos | Dogfood regression |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 Foundations | — | — | — | 0.D (manual) | — | — | — | — | — |
+| 1 Auth | 1.A.3, 1.C.3 | 1.B.5, 1.C.5 | — | 1.D.4 | 1.A.4, 1.B.3 | — | — | — | 6.G (deferred) |
+| 2 Client | 2.A.4, 2.B.5, 2.C.3 | 2 mandatory | — | — | 2.B, 2.C | — | 2.D chaos stress | 2 stress | — |
+| 3 Webhook | 3.A.5, 3.B.5, 3.C.5 | 3 roundtrip | — | 3.D.5 | all workstreams | 3.A.3 | 3.D.4 load | 3 chaos | — |
+| 4 PR bot | all workstreams | 4 e2e | manual PR | 4.F.4 | 4.C.5, 4.E.5 | 4 fork-PR test | 4 perf | — | — |
+| 5 Observability | 5.A.5, 5.B.4 | — | — | — | — | — | — | — | — |
+| 6 QA | 6.A gate | 6.B cassettes | 6.C script | (via others) | 6.F suite | 6.E pentest | 6.D load | 6.F chaos | 6.G (all 6) |
+| 7 Staging | — | — | 7.D soak | 7.B | 7.D soak chaos | — | 7.D soak | 7.D soak | — |
+| 8 Production | — | — | — | — | — | Remedy review | — | — | — |
+| 9 Operations | — | — | 9.D drills | — | 9.D drills | 9.D drills | — | 9.D drills | — |
+
+Legend:
+- **Unit:** `tests/unit/github/*`
+- **Integration:** `tests/integration/github/*` with VCR cassettes for CI, live for nightly
+- **E2E:** `tests/e2e/` — real repos, real webhook, real comment posted
+- **Smoke:** `tests/smoke_github_*.py` — standalone scripts following Valor's existing convention
+- **Failure injection:** `pytest -m failure_injection`
+- **Security:** adversarial review + specific cases from 6.E
+- **Load:** `tests/load/webhook_load.py` via locust/k6
+- **Chaos:** `pytest -m chaos`
+- **Dogfood regression:** `tests/dogfood/test_cns_regressions.py`
+
+### Appendix B — WORKLOG skeleton
+
+The plan's worklog lives at
+`docs/plans/worklogs/valor-github-integration.md`. Entries are
+append-only, newest at the bottom. Skeleton:
+
+```markdown
+# Valor GitHub Integration — WORKLOG
+
+Append-only. Newest entries at the bottom.
+
+See `docs/plans/valor-github-integration.md` for the plan itself
+and `docs/plans/README.md` for the claim protocol.
+
+---
+
+## 2026-04-13T18:00:00Z — project-lead — phase-0.A.1 — Register App with Remedy admin
+Status: claimed
+Branch: valor/github-integration/phase-0/A-register-app
+Files planned: (none — external task)
+Notes: Coordinating with Remedy ops to create valor-bot in their GitHub org.
+Blocker expected: ~30 min wait for admin availability.
+
+## 2026-04-13T18:32:00Z — project-lead — phase-0.A.1 — Register App with Remedy admin
+Status: done
+Branch: valor/github-integration/phase-0/A-register-app
+Commits: (none — external task)
+Notes: App registered, app_id=123456, installation on remedy/valor-bot-test-sandbox
+confirmed (installation_id=9876543). Private key downloaded to encrypted USB,
+pending move to Vault in workstream 0.B.
+
+---
+
+## 2026-04-13T19:00:00Z — agent-claude-code — phase-0.C.1 — Empty webhook receiver
+Status: claimed
+Branch: valor/github-integration/phase-0/C-empty-receiver
+Files planned: webhooks/__init__.py, webhooks/github/__init__.py, webhooks/github/router.py
+Notes: Creating the minimum endpoint that returns 200 for any POST. Following
+FastAPI router pattern from core/auth.py.
+
+## 2026-04-13T19:17:00Z — agent-claude-code — phase-0.C.1 — Empty webhook receiver
+Status: done
+Branch: valor/github-integration/phase-0/C-empty-receiver
+Commits: [a1b2c3d]
+Notes: Endpoint live. Wired into main FastAPI app. Returns 200 with X-GitHub-Delivery
+echoed back. Tested locally with curl + fabricated delivery header. Ready for
+0.D verification gate.
+
+---
+
+## 2026-04-13T20:05:00Z — project-lead — phase-0.D — End-to-end verification
+Status: done
+Branch: (no branch — verification only)
+Commits: (none)
+Notes: ✅ Test PR opened on remedy/valor-bot-test-sandbox.
+Observed delivery UUID 7bfd4c2a-... in BOTH GitHub "Recent Deliveries" AND
+Valor log at 20:04:58Z. Clicked "Redeliver" — same UUID, second log entry at
+20:05:12Z. End-to-end loop VERIFIED. Phase 0 complete. Proceeding to phase 1.
+```
+
+Key conventions visible in the example:
+
+- **ISO 8601 UTC timestamps** so entries sort correctly and are
+  unambiguous across timezones
+- **Worker ID** — a stable identifier for the human or AI agent
+  (e.g. `project-lead`, `agent-claude-code-<short-id>`, or a real
+  name)
+- **Task ID** from section 6.3
+- **Status transitions:** `claimed` → `in-progress` →
+  (`blocked` | `handing-off`) → `done`
+- **Never rewrite prior entries.** Always append a new entry for
+  every status change.
+
+### Appendix C — Glossary
+
+Terms specific to this plan and the surrounding Monty-CNS / Valor
+ecosystem. Read `docs/security/actor-model.md` for actor-type
+definitions (human end-user, human operator, AI agent, service/bot,
+external integration).
+
+| Term | Definition |
+|---|---|
+| **CNS** | Claude Nervous System — the Monty-CNS dotfiles repo, this plan's parent |
+| **ConstructionOS** | Valor's construction vertical, Remedy Reconstruction's use case |
+| **FinanceOS** | Valor's finance / brokerage vertical |
+| **MontyCore** | Valor's central agent orchestrator (port 8090), agents talk to it via `/ask` |
+| **V2 envelope** | Valor's standard agent response shape `{status, data, error}` |
+| **Valor Bot** | The GitHub App registered in this plan (`valor-bot` under Remedy org) |
+| **Installation token** | 1-hour-TTL bearer token issued by GitHub to a GitHub App installation, used for API calls |
+| **JWT (GitHub App)** | 10-minute-max-TTL JSON Web Token signed with the App private key, exchanged for an installation token |
+| **HMAC signature** | SHA256 HMAC of the raw webhook body, used to verify GitHub is the sender |
+| **`X-GitHub-Delivery`** | UUID header attached to every webhook delivery, used for idempotency |
+| **Dedupe** | Rejecting duplicate webhook deliveries by their X-GitHub-Delivery UUID |
+| **vgi-N.X.M** | Task ID format: `valor-github-integration` phase-N workstream-X task-M |
+| **Soak test** | Long-duration test under realistic load to surface time-dependent bugs |
+| **Feature flag** | `GITHUB_INTEGRATION_ENABLED_REPOS` — controls which Remedy repos the bot acts on |
+| **Dogfood lesson** | A specific failure mode from the CNS setup session (2026-04-13) that this plan is explicitly defended against |
+| **GitHubKit** | Python SDK for GitHub API, 2026-recommended for new Python + GitHub App integrations |
+| **sops / age** | The secrets encryption tools Monty-CNS uses; not directly part of this plan but share Vault with it |
+| **Rack** | The self-hosted hardware (per `docs/self-hosting.md`) where Valor production runs |
+| **Tailscale** | Private network used to front the webhook URL without exposing it to the public internet |
+
+### Appendix D — Cross-references
+
+Documents this plan depends on or extends:
+
+| Document | Role |
+|---|---|
+| `docs/plans/README.md` | Plans directory conventions (claim protocol, commits, handoff) |
+| `docs/security/README.md` | Security posture index |
+| `docs/security/github-auth.md` | Authoritative reference for every auth decision; this plan implements its GitHub App recommendation |
+| `docs/security/actor-model.md` | Defines the Valor Bot as a service/bot actor and specifies its permissions |
+| `docs/security/threat-model.md` | Baseline threat model; this plan adds a Valor-Bot-specific threat appendix at runbook time |
+| `docs/security/classification.md` | Data classification rules; Valor Bot operates on Confidential at most, never Restricted |
+| `docs/security/compromise-playbook.md` | CNS's general compromise playbook; the Valor runbook extends it for bot-specific incidents |
+| `docs/security/valor-scope.md` | Explicit gate on what Valor systems may NOT touch; this plan respects that gate |
+| `docs/security/disk-encryption.md` | Required on any developer machine building or operating this |
+| `docs/self-hosting.md` | Rack / Vault / Tailscale patterns this plan reuses |
+| `docs/secrets-setup.md` | sops+age flow (CNS pattern, not directly used here but cultural reference) |
+| `docs/migration-valor2.md` | Historical context on what moved from valor2.0 to CNS |
+| `.github/workflows/ship-gate.yml` (valor2.0) | Existing CI matrix this plan extends with a new job |
+| `core/auth.py` (valor2.0) | Existing auth module — NOT touched, new `core/github_auth.py` added as sibling |
+| `core/config.py` (valor2.0) | Existing config loader — extended with `GITHUB_APP_*` vars |
+| `core/approval_token_store.py` (valor2.0) | Existing token storage pattern — used as template for `core/github_token_cache.py` |
+| `tests/conftest.py` (valor2.0) | Existing pytest fixtures — extended with GitHub mock fixtures |
+| `configs/intuit_oauth.json` (valor2.0) | Existing OAuth config pattern — template reference for `configs/github_app.json` |
+
+### Appendix E — Changelog
+
+| Date | Author | Change |
+|---|---|---|
+| 2026-04-13 | Initial draft | Sections 1–9 written across 8 chunks during the CNS setup session |
+
+Future changes append entries here. Amendments to the plan
+(correcting a workstream, adding a dogfood lesson 5.7, adjusting
+milestone criteria) must update this changelog so readers know
+the plan is current.
+
+---
+
+**End of plan.**
+
+The plan's terminal state — phase 9 completed — transitions to
+ongoing operations governed by the runbook
+(`docs/plans/valor-github-integration-runbook.md`) and the drill
+cadence from section 9.D. Future work that builds on this
+integration (CI deploys, issue sync, multi-customer rollout) gets
+its own plan under `docs/plans/`.
