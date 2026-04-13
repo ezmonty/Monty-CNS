@@ -694,3 +694,314 @@ If two workers push conflicting changes to the same file on the same
 phase branch, the later push rebases, resolves conflicts locally,
 and force-pushes their own branch (never the phase branch itself).
 The phase branch is only advanced via reviewed merges.
+
+## 7. Phases
+
+Phases are strictly sequential at the phase level — phase N+1 does
+not begin until phase N's exit criteria are met. Within a phase,
+workstreams run in parallel.
+
+Every task ID follows the `vgi-<phase>.<workstream>.<task>` format
+from section 6.3. Workers claim tasks in the worklog before starting
+any code changes.
+
+### Phase 0 — Foundations
+
+**Goal:** Register the GitHub App, store its private key in Vault,
+stand up an empty webhook receiver, and **prove end-to-end that a
+real GitHub webhook delivery reaches a real Valor log entry** before
+any functional code is written.
+
+**Dependencies:** none (this is the start).
+
+**Workstreams (parallel):**
+
+#### Workstream 0.A — GitHub App registration (human only)
+
+- `vgi-0.A.1` Remedy admin creates the App at
+  `https://github.com/organizations/remedy-reconstruction/settings/apps/new`
+  with name `valor-bot`, description, homepage URL, callback URL
+  (unused for this workflow but required), webhook URL placeholder
+  (will be updated in 0.C).
+- `vgi-0.A.2` Set permissions: `Contents: Read`, `Pull requests:
+  Read and write`, `Metadata: Read`. Subscribe to events: `pull_request`.
+- `vgi-0.A.3` Generate private key, download the `.pem` once.
+- `vgi-0.A.4` Note the App ID (integer) and a dummy webhook secret
+  (cryptographically random 32-byte string) in a secure note that
+  will be moved to Vault in 0.B.
+- `vgi-0.A.5` Install the App on a designated **test repository**
+  (not a production repo), e.g. `remedy/valor-bot-test-sandbox`.
+  Record the installation ID.
+
+#### Workstream 0.B — Vault setup
+
+- `vgi-0.B.1` Install HashiCorp Vault on the self-hosted rack
+  (follow `docs/self-hosting.md` Tailscale pattern so the Vault
+  endpoint is only reachable from the tailnet).
+- `vgi-0.B.2` Initialize Vault with a reasonable seal policy (Shamir
+  with 3-of-5 unseal keys stored in the compromise playbook
+  locations).
+- `vgi-0.B.3` Create the secret path `secret/valor/github-app/` with
+  fields `private_key`, `app_id`, `webhook_secret`, `installation_id`.
+  Populate from 0.A output. Do NOT commit anything to git.
+- `vgi-0.B.4` Create a Vault policy `valor-gh-reader` with read-only
+  access to `secret/valor/github-app/*` and issue a token for the
+  Valor worker process. Store that token in the same way Valor
+  already handles other service credentials.
+- `vgi-0.B.5` Document the rotation procedure in
+  `docs/plans/valor-github-integration-runbook.md` (phase 9 will
+  expand this, but the skeleton goes here).
+
+#### Workstream 0.C — Empty webhook receiver
+
+- `vgi-0.C.1` Create the `webhooks/` directory scaffold with empty
+  `webhooks/github/router.py` exposing `POST /gh-hook` that accepts
+  any request and returns `{"status": "received", "delivery_id":
+  "<from header>"}`.
+- `vgi-0.C.2` Wire the new router into the FastAPI app in Valor's
+  existing main module (no changes to existing routes).
+- `vgi-0.C.3` Create an empty `docs/plans/worklogs/valor-github-integration.md`
+  using the skeleton format from section 6.1.
+- `vgi-0.C.4` Stand up a Tailscale tunnel from github.com's egress
+  IPs to the new Valor endpoint: `webhook.valor.tail-xxxx.ts.net/gh-hook`.
+  Document the tunnel in the runbook.
+- `vgi-0.C.5` Update the GitHub App webhook URL (from 0.A) to point
+  at the Tailscale endpoint.
+
+#### Workstream 0.D — End-to-end verification gate 🚨
+
+**This is the most important milestone of the entire plan** — it's
+the "sandbox vs. real" dogfood lesson (5.1) in concrete form.
+
+- `vgi-0.D.1` In the GitHub App admin UI, click the "Recent Deliveries"
+  tab.
+- `vgi-0.D.2` Trigger a test delivery (open a PR on the sandbox test
+  repo).
+- `vgi-0.D.3` Observe the delivery in GitHub's "Recent Deliveries"
+  list. Status should show `200` response.
+- `vgi-0.D.4` Observe the SAME delivery in Valor's logs on the rack,
+  by its `X-GitHub-Delivery` UUID. Confirm the UUID matches.
+- `vgi-0.D.5` Click "Redeliver" on the delivery. Observe that Valor
+  receives it again, with the same UUID.
+- `vgi-0.D.6` Write a worklog entry `phase-0-verification-complete`
+  with the delivery UUID as empirical proof.
+
+**Do not proceed to phase 1 until 0.D.4 passes.** Real webhook,
+real logs, real UUID match. If the UUID doesn't match or the log
+entry is missing, stop and diagnose — something in the path is
+broken and phase 1 work on top of a broken foundation is wasted.
+
+**Milestones:**
+
+1. 🪪 App registered, permissions set, installed on sandbox repo
+2. 🔒 Private key in Vault, worker can read it
+3. 🌐 Empty webhook receiver returns 200 for any POST
+4. 🚨 **End-to-end delivery verified by matching X-GitHub-Delivery UUIDs** (this is the phase 0 gate)
+
+**Tests (phase 0):**
+
+- Manual: GitHub "Redeliver" button → Valor log entry appears
+- Manual: curl the webhook endpoint directly → 200 response
+- Unit: none yet (nothing functional to test)
+- Integration: none yet
+- Smoke: `tests/smoke_github_phase0_receiver.py` — hits the local
+  endpoint with a fabricated POST and asserts 200
+
+**Exit criteria:**
+
+- All 4 milestones achieved
+- Worklog entry `phase-0-verification-complete` committed
+- No code on phase-1 branches yet
+
+---
+
+### Phase 1 — Core auth module
+
+**Goal:** Build `core/github_auth.py` and `core/github_token_cache.py`
+so any Valor process can obtain a valid GitHub App installation token
+on demand, with automatic caching and refresh.
+
+**Dependencies:** phase 0 complete (Vault populated, private key
+readable).
+
+**Workstreams (parallel):**
+
+#### Workstream 1.A — JWT signer (pure function)
+
+- `vgi-1.A.1` Create `core/github_auth.py` with a pure function
+  `mint_jwt(private_key: str, app_id: int, now: int | None = None)
+  -> str` that returns an RS256-signed JWT with `iss=app_id`,
+  `iat=now-60`, `exp=now+600`. The `now` parameter is for
+  deterministic testing; defaults to `time.time()`.
+- `vgi-1.A.2` Add dependency `PyJWT[crypto]>=2.8` to
+  `requirements.txt`.
+- `vgi-1.A.3` Write unit tests at `tests/unit/github/test_github_auth.py`
+  with fixed clock and fixed test private key. Assert JWT has correct
+  `iss`, `iat`, `exp`, and is signed with RS256.
+- `vgi-1.A.4` Test edge cases: expired `now`, future `now`, missing
+  private key, malformed private key, algorithm mismatch.
+- `vgi-1.A.5` Target 100% branch coverage on the signer function.
+
+#### Workstream 1.B — Installation token fetcher
+
+- `vgi-1.B.1` Add dependency `githubkit[auth-app]>=0.15.2` to
+  `requirements.txt` (the 2026 Python SDK recommended in
+  `docs/security/github-auth.md`).
+- `vgi-1.B.2` Add function `get_installation_token(app_id: int,
+  installation_id: int, private_key: str) -> tuple[str, datetime]`
+  that mints a JWT (via 1.A), calls
+  `POST /app/installations/<id>/access_tokens` via GitHubKit, and
+  returns `(token, expires_at)`.
+- `vgi-1.B.3` Handle failures: 401 (bad JWT, usually clock skew),
+  404 (wrong installation ID), 5xx (GitHub outage). Raise named
+  exceptions: `JwtRejected`, `InstallationNotFound`,
+  `GitHubUnavailable`.
+- `vgi-1.B.4` Unit test with mocked `httpx` responses.
+- `vgi-1.B.5` Integration test against real GitHub (installation from
+  phase 0.A): `pytest -m integration tests/integration/github/test_auth_flow.py`.
+
+#### Workstream 1.C — Token cache
+
+- `vgi-1.C.1` Create `core/github_token_cache.py` modeled after
+  `core/approval_token_store.py`. Redis-backed, key
+  `github:installation_token:<installation_id>`, TTL = 55 minutes
+  (5-minute safety margin on the 60-minute token expiry).
+- `vgi-1.C.2` Add function `get_cached_installation_token(
+  app_id: int, installation_id: int, private_key: str) -> str`.
+  Cache hit → return cached token. Cache miss → fetch (via 1.B) and
+  cache the result.
+- `vgi-1.C.3` Unit test cache hit (avoids network call), cache miss
+  (calls fetcher), expired cache (refreshes).
+- `vgi-1.C.4` Add invalidation function
+  `invalidate_installation_token(installation_id: int)` for the
+  rotation runbook to call.
+- `vgi-1.C.5` Integration test against real Redis: concurrent
+  access, stampede handling (only one fetcher runs when many
+  callers race on expiry).
+
+#### Workstream 1.D — Config wiring
+
+- `vgi-1.D.1` Extend `core/config.py` with GitHub App config:
+  `GITHUB_APP_ID: int`, `GITHUB_APP_INSTALLATION_ID: int`,
+  `GITHUB_WEBHOOK_SECRET: str`, `GITHUB_APP_PRIVATE_KEY_PATH: Path`.
+  All via `os.getenv` following the existing convention.
+- `vgi-1.D.2` Fetch private key from Vault at worker startup, hold
+  in process memory. Add `load_github_private_key()` helper that
+  checks env first (for dev), then Vault (for prod).
+- `vgi-1.D.3` Update `.env.example` with the new variables and
+  placeholder values. **Do not add comments** (dogfood lesson 5.3).
+- `vgi-1.D.4` Add smoke test `tests/smoke_github_auth.py` that
+  loads config, fetches a token, and prints its length. Standalone
+  script, runnable as `python tests/smoke_github_auth.py`.
+
+**Milestones:**
+
+1. 🔑 `mint_jwt()` passes 100% unit test coverage
+2. 🎟️ `get_installation_token()` returns a valid token from real GitHub
+3. ♻️ `get_cached_installation_token()` demonstrates cache hit in metrics
+4. ⚙️ Config loads from env or Vault and wires through to the fetcher
+5. 🚬 `tests/smoke_github_auth.py` passes against real GitHub
+
+**Tests (phase 1):**
+
+- Unit: `tests/unit/github/test_github_auth.py` — 100% coverage on
+  JWT signer and token fetcher (mocked HTTP)
+- Unit: `tests/unit/github/test_github_token_cache.py` — cache hit,
+  miss, expiry, stampede
+- Integration: `tests/integration/github/test_auth_flow.py` — against
+  real GitHub test App installation; requires env vars set
+- Smoke: `tests/smoke_github_auth.py` — end-to-end standalone script
+- Failure injection: simulated JWT rejection, 5xx from GitHub,
+  Redis unavailable mid-cache-get, private key missing at startup
+
+**Exit criteria:**
+
+- All 5 milestones achieved
+- All phase-1 tests green on Linux and Windows CI
+- Worklog entry `phase-1-auth-complete`
+- `core/github_auth.py` and `core/github_token_cache.py` merged to
+  the feature branch
+
+---
+
+### Phase 2 — GitHub API client wrapper
+
+**Goal:** Build `core/github_client.py` — a thin GitHubKit wrapper
+that every Valor process uses to talk to the GitHub API. Centralizes
+auth, rate limit handling, retries, structured logging, and metrics.
+
+**Dependencies:** phase 1 complete (auth + token cache working).
+
+**Workstreams (parallel):**
+
+#### Workstream 2.A — Base client setup
+
+- `vgi-2.A.1` Create `core/github_client.py` with a `ValorGitHubClient`
+  class that wraps `githubkit.GitHub(auth=...)` and auto-injects the
+  installation token via `get_cached_installation_token()` on every
+  request.
+- `vgi-2.A.2` Expose the GitHubKit REST and GraphQL namespaces as
+  properties (`client.rest`, `client.graphql`) so callers can use
+  GitHubKit's native typed API.
+- `vgi-2.A.3` Add a `request_id` per call for log correlation.
+- `vgi-2.A.4` Unit test with mocked GitHubKit: token is injected,
+  request_id propagates, cleanup on client close.
+
+#### Workstream 2.B — Rate limit middleware
+
+- `vgi-2.B.1` Parse `x-ratelimit-remaining`, `x-ratelimit-reset`,
+  `x-ratelimit-used`, `x-ratelimit-limit` from every response.
+- `vgi-2.B.2` Emit Prometheus gauge `valor_github_rate_limit_remaining`
+  per installation ID.
+- `vgi-2.B.3` When remaining drops below 10% of limit, log a warning
+  with correlation ID.
+- `vgi-2.B.4` On 429 response, parse `Retry-After` header and back
+  off with exponential-plus-jitter. Max 5 retries before raising
+  `RateLimitExceeded`.
+- `vgi-2.B.5` Unit test: simulate 429 with `Retry-After: 1`, verify
+  retry happens; simulate 5 consecutive 429s, verify exception.
+
+#### Workstream 2.C — Retry middleware
+
+- `vgi-2.C.1` Retry on transient failures: connection errors, 5xx,
+  HTTP timeout. Exponential backoff with jitter, 3 retries max.
+- `vgi-2.C.2` Do NOT retry on 4xx (except 429 handled in 2.B): those
+  are client errors, not transient.
+- `vgi-2.C.3` Unit test: simulate connection error → retry → success;
+  simulate 5xx → retry → success; simulate 400 → raise immediately.
+
+#### Workstream 2.D — Structured logging + metrics
+
+- `vgi-2.D.1` Every request logged with: method, path, status code,
+  duration_ms, installation_id, correlation_id, rate limit headers.
+- `vgi-2.D.2` Prometheus histogram `valor_github_request_duration_seconds`
+  labeled by method and path pattern.
+- `vgi-2.D.3` Prometheus counter `valor_github_requests_total` labeled
+  by method, path pattern, status class (2xx/4xx/5xx).
+- `vgi-2.D.4` Never log request or response bodies (they can contain
+  secrets).
+
+**Milestones:**
+
+1. 🔧 `client.rest.repos.get(owner, repo)` returns typed data
+2. 🚦 429 responses trigger back-off and eventual success
+3. 📊 Metrics visible in local Prometheus scrape
+4. 📝 Every request logged with correlation ID
+
+**Tests (phase 2):**
+
+- Unit: `tests/unit/github/test_github_client.py` — mocked GitHubKit
+  responses covering 2xx, 429, 5xx, timeouts, connection errors
+- Integration: `tests/integration/github/test_client_roundtrip.py` —
+  real GitHub call to fetch the sandbox test repo
+- Failure injection: rate limit exhaustion simulation, network
+  failure simulation, token expiry mid-request
+- Chaos: `tests/chaos/test_github_client_stress.py` — 100 concurrent
+  requests, verify rate limit backoff holds
+
+**Exit criteria:**
+
+- All 4 milestones achieved
+- All phase-2 tests green on Linux and Windows CI
+- Worklog entry `phase-2-client-complete`
+- `core/github_client.py` merged
