@@ -330,3 +330,137 @@ re-seed from scratch.
 
 **This is why the scaffold `.sops.yaml` includes a placeholder for a
 recovery key.** Don't skip it.
+
+## Recovery flow — when `sops env.sops.yaml` edit breaks
+
+This is the documented escape hatch for when the normal edit flow
+fails. Usually caused by a YAML syntax error in the editor buffer
+after a bad paste or an accidental edit of the scaffold comment
+block. Symptom:
+
+```
+Error unmarshalling file: Error unmarshaling input YAML: yaml: line 23: could not find expected ':'
+```
+
+The file on disk may be in one of three states: (a) still
+encrypted and intact, (b) empty (shell `>` redirect truncated it
+before `sops` ran), or (c) half-written plaintext. Treat all three
+the same way — start over from scratch with a clean YAML written
+via bash heredoc or Python.
+
+### Option 1: block-scalar YAML (no escaping required)
+
+YAML literal block scalar syntax (`|-`) takes the value on the
+next line(s), indented, with no string escaping. No matter what
+characters are in the value — quotes, backslashes, colons, dollar
+signs — the block scalar form survives them. This is the
+"nothing can go wrong" escape hatch.
+
+Run this in the secrets repo (pastes silently, never echoes the
+credential values):
+
+```bash
+(
+  cd ~/src/Monty-CNS-Secrets || exit 1
+
+  read -s -p "Anthropic API key (sk-ant-...): " ANTHROPIC; echo
+  read -s -p "GitHub PAT (github_pat_... or ghp_...): " GITHUB; echo
+
+  bad=0
+  case "$ANTHROPIC" in sk-ant-*) ;; *) echo "⚠️  Anthropic key wrong format"; bad=1 ;; esac
+  case "$GITHUB"    in github_pat_*|ghp_*) ;; *) echo "⚠️  GitHub PAT wrong format"; bad=1 ;; esac
+  if [ ${#ANTHROPIC} -lt 50 ]; then echo "⚠️  Anthropic key too short"; bad=1; fi
+  if [ ${#GITHUB}    -lt 40 ]; then echo "⚠️  GitHub PAT too short";    bad=1; fi
+  if [ "$bad" -eq 1 ]; then echo "Aborting — no file written."; exit 1; fi
+
+  {
+    printf 'ANTHROPIC_API_KEY: |-\n'
+    printf '  %s\n' "$ANTHROPIC"
+    printf 'GITHUB_PERSONAL_ACCESS_TOKEN: |-\n'
+    printf '  %s\n' "$GITHUB"
+  } > env.sops.yaml
+
+  sops -e -i env.sops.yaml
+
+  if head -1 env.sops.yaml | grep -q 'ENC\['; then
+    echo "✅ Encrypted. First lines:"
+    head -6 env.sops.yaml
+  else
+    echo "❌ Encryption failed — deleting plaintext for safety"
+    rm -f env.sops.yaml
+  fi
+)
+```
+
+The block scalar layout looks like:
+
+```yaml
+ANTHROPIC_API_KEY: |-
+  sk-ant-api03-actual-key-with-any-characters-here
+GITHUB_PERSONAL_ACCESS_TOKEN: |-
+  github_pat_actual-value-here
+```
+
+Key points:
+
+- `|-` means "literal block scalar, strip trailing newline"
+- The value is the indented line(s) immediately below
+- **No escaping required** for any character — not `"`, not `\`,
+  not `:`, not `$`
+- `sops -e -i <file>` encrypts in place, which matches the
+  existing `.sops.yaml` creation rule because the filename ends
+  in `.sops.yaml`
+
+### Option 2: Python with `json.dumps` (if Python 3 is available)
+
+If you have Python 3 on the machine, this is slightly cleaner:
+
+```bash
+cd ~/src/Monty-CNS-Secrets
+
+python3 <<'PYEOF'
+import getpass, json
+anthropic = getpass.getpass('Anthropic API key: ')
+github    = getpass.getpass('GitHub PAT: ')
+with open('env.sops.yaml', 'w') as f:
+    f.write(f'ANTHROPIC_API_KEY: {json.dumps(anthropic)}\n')
+    f.write(f'GITHUB_PERSONAL_ACCESS_TOKEN: {json.dumps(github)}\n')
+PYEOF
+
+sops -e -i env.sops.yaml
+```
+
+`json.dumps` produces valid JSON strings, and every JSON string is
+a valid YAML double-quoted string. Escaping handled automatically.
+
+### What to avoid during recovery
+
+- **Don't** pipe shell variables into a `cat > file <<EOF` heredoc
+  with double-quoted YAML strings. If the value contains `"` or
+  `\`, the YAML breaks. Use block-scalar (option 1) or `json.dumps`
+  (option 2) instead.
+- **Don't** run `sops -e /tmp/plain.yaml > env.sops.yaml` without
+  first checking that `/tmp/plain.yaml` exists — `>` truncates
+  the target before `sops` runs, so a failed `sops` invocation
+  leaves `env.sops.yaml` as 0 bytes.
+- **Don't** commit a plaintext file you created during recovery.
+  Always `rm -f .env.plain` / `rm -f /tmp/env.plain.yaml`
+  immediately after a successful encrypt. The `.gitignore` in the
+  scaffold catches common names but don't rely on it.
+- **Don't** use `sops --age <pubkey>` expecting it to bypass the
+  creation rule lookup. The `--age` flag overrides recipients
+  *within a matched rule* but doesn't skip rule matching entirely.
+  If sops can't match a rule for your filename, it errors no
+  matter what flags you pass.
+
+### If recovery still fails
+
+Paste the exact sops error into the ops channel with:
+- The file path you're trying to encrypt
+- The output of `ls -la env.sops.yaml` (size matters)
+- The output of `cat .sops.yaml` (redact any recipient you
+  consider private)
+- The platform (`uname -a` on macOS/Linux)
+
+Escalate to someone with a working age key from another machine
+who can decrypt + re-seed the file from their side.

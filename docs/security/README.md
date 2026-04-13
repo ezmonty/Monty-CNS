@@ -19,6 +19,8 @@ a starting point, not a finish line.
 | [classification.md](classification.md) | Data classification: Public / Internal / Confidential / Restricted — and which tools handle which class |
 | [where-data-lives.md](where-data-lives.md) | Decision tree: does it go in git, a secret manager, a database, or a bank-grade vault? |
 | [disk-encryption.md](disk-encryption.md) | Full-disk encryption setup per OS (FileVault / BitLocker / LUKS) — **mandatory** on any machine that runs CNS |
+| [github-auth.md](github-auth.md) | Authoritative reference for every GitHub authentication decision — the six methods (PAT, SSH, OAuth App, GitHub App, Device Flow, CLI tokens), decision tree, GitHub App deep dive, Python/GitHubKit reference code, rate limits, private key storage |
+| [actor-model.md](actor-model.md) | Five-actor taxonomy (human end-user, human operator, AI agent, service/bot, external integration), identity / auth / authz / audit per actor type, how AI agents inherit human permissions minus destructive operations, anti-patterns like shared credentials |
 | [compromise-playbook.md](compromise-playbook.md) | Step-by-step incident response: laptop stolen, token leaked, key compromised |
 | [valor-scope.md](valor-scope.md) | What this system is NOT for: customer data, regulated records, anything in Valor's database layer |
 
@@ -29,13 +31,17 @@ a starting point, not a finish line.
 - **Git-as-vault is a real pattern** used by production teams (sops, git-crypt, Sealed Secrets, Ansible Vault) — **for operational secrets**, not customer data
 - **Customer financial data lives in a database**, not in git, encrypted or otherwise
 - **FDE is mandatory** on any machine that touches these secrets. Cross-platform guidance in `disk-encryption.md`.
+- **Humans get PATs, services get GitHub Apps** — see `github-auth.md` for the full decision framework
+- **Every action has exactly one attributable actor** — see `actor-model.md` for the taxonomy
 - **Compromise recovery is a process, not a technology** — the playbook is what matters
 
 ## Reading order for a new contributor
 
 1. `threat-model.md` — understand what we're protecting
 2. `classification.md` — understand what kind of data goes where
-3. `disk-encryption.md` — set up your own machine correctly
-4. `compromise-playbook.md` — know what to do if something goes wrong
-5. `valor-scope.md` — know what this system is not for
-6. `where-data-lives.md` — reference when designing new features
+3. `actor-model.md` — understand who's doing the actions
+4. `disk-encryption.md` — set up your own machine correctly
+5. `github-auth.md` — understand the authentication options
+6. `compromise-playbook.md` — know what to do if something goes wrong
+7. `valor-scope.md` — know what this system is not for
+8. `where-data-lives.md` — reference when designing new features
