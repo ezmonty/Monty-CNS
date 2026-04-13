@@ -12,12 +12,15 @@ Monty-CNS/
 ├── claude/             # mirrors ~/.claude — only tracked, portable files
 │   ├── settings.json
 │   ├── stop-hook-git-check.sh
+│   ├── hooks/
+│   │   ├── session-start.sh     # pulls repo + bootstrap + loads env each session
+│   │   └── session-start.d/     # drop-in plugins (secret decryption, etc.)
 │   ├── agents/
 │   ├── commands/
-│   ├── skills/
 │   └── mcp/            # MCP server definitions (no secrets)
 ├── docs/
-│   └── self-hosting.md # running your own git remote on your rack
+│   ├── self-hosting.md # running your own git remote on your rack
+│   └── secrets.md      # sops/age + drop-in flow for secrets
 └── .gitignore          # blocks secrets, sessions, runtime state
 ```
 
