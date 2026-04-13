@@ -385,6 +385,9 @@ generate_key() {
 
   if [[ -r "$AGE_KEY_FILE" ]]; then
     ok "age key already exists at $AGE_KEY_FILE"
+    # Still make sure the macOS-native symlink exists on macOS — older
+    # activations may not have created it.
+    create_macos_sops_symlink
     return 0
   fi
 
@@ -396,6 +399,7 @@ generate_key() {
     local pubkey
     pubkey="$(grep '^# public key:' "$AGE_KEY_FILE" | awk '{print $4}')"
     info "public key: $(bold "$pubkey")"
+    create_macos_sops_symlink
     say
     warn "Back this file up somewhere safe."
     info "If you lose the private key, you lose access to every secret"
@@ -404,6 +408,29 @@ generate_key() {
   else
     return 1
   fi
+}
+
+# On macOS, sops looks at $HOME/Library/Application Support/sops/age/keys.txt
+# by default, not $HOME/.config/sops/age/keys.txt. Create a symlink so sops
+# finds the key under either convention — no env var required.
+create_macos_sops_symlink() {
+  if [[ "$OS" != "macos" ]]; then
+    return 0
+  fi
+  local macos_dir="$HOME/Library/Application Support/sops/age"
+  local macos_link="$macos_dir/keys.txt"
+  if [[ -L "$macos_link" ]] && [[ "$(readlink "$macos_link")" == "$AGE_KEY_FILE" ]]; then
+    ok "macOS sops key symlink already in place"
+    return 0
+  fi
+  mkdir -p "$macos_dir"
+  if [[ -e "$macos_link" && ! -L "$macos_link" ]]; then
+    warn "existing file at $macos_link — not overwriting"
+    warn "you may need to delete it manually and re-run"
+    return 0
+  fi
+  ln -sfn "$AGE_KEY_FILE" "$macos_link"
+  ok "linked $macos_link -> $AGE_KEY_FILE"
 }
 
 clone_or_init_secrets_repo() {
