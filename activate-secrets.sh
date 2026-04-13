@@ -227,14 +227,60 @@ install_tools() {
 
   case "$OS" in
     macos)
-      if ! command -v brew >/dev/null 2>&1; then
-        err "Homebrew not found. Install brew first: https://brew.sh"
-        return 1
-      fi
-      if ask_yes_no "  Install with 'brew install sops age'?" Y; then
-        brew install sops age
+      if command -v brew >/dev/null 2>&1; then
+        if ask_yes_no "  Install with 'brew install sops age'?" Y; then
+          brew install sops age
+        else
+          return 1
+        fi
       else
-        return 1
+        # No Homebrew — offer direct binary download from github releases.
+        # This avoids a ~5min brew install on bare Macs.
+        say
+        info "Homebrew not found. Two options:"
+        info "  A. Install Homebrew (recommended long-term, 5 min):"
+        info "     /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        info "  B. Download sops + age binaries directly from GitHub releases (30 sec)"
+        say
+        if ! ask_yes_no "  Download sops + age directly now? (needs sudo for /usr/local/bin install)" Y; then
+          err "can't continue without sops + age"
+          info "  Re-run after installing either option."
+          return 1
+        fi
+
+        local arch
+        case "$(uname -m)" in
+          arm64)  arch=arm64  ;;
+          x86_64) arch=amd64  ;;
+          *)      err "unsupported arch: $(uname -m)"; return 1 ;;
+        esac
+
+        # Ensure /usr/local/bin exists (Apple Silicon Macs may not have it by default)
+        sudo mkdir -p /usr/local/bin
+
+        # sops — single binary from github releases
+        info "downloading sops (darwin-$arch)..."
+        local sops_url="https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.darwin.$arch"
+        if ! curl -fsSLo /tmp/sops "$sops_url"; then
+          err "sops download failed from $sops_url"
+          return 1
+        fi
+        sudo install -m 0755 /tmp/sops /usr/local/bin/sops
+        rm -f /tmp/sops
+        ok "installed /usr/local/bin/sops"
+
+        # age — tarball with age + age-keygen
+        info "downloading age (darwin-$arch)..."
+        local age_url="https://github.com/FiloSottile/age/releases/download/v1.2.0/age-v1.2.0-darwin-$arch.tar.gz"
+        if ! curl -fsSLo /tmp/age.tgz "$age_url"; then
+          err "age download failed from $age_url"
+          return 1
+        fi
+        tar -xzf /tmp/age.tgz -C /tmp
+        sudo install -m 0755 /tmp/age/age        /usr/local/bin/age
+        sudo install -m 0755 /tmp/age/age-keygen /usr/local/bin/age-keygen
+        rm -rf /tmp/age /tmp/age.tgz
+        ok "installed /usr/local/bin/age + /usr/local/bin/age-keygen"
       fi
       ;;
     debian)
