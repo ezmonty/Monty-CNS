@@ -1,5 +1,11 @@
 # Secrets: how they ride alongside Monty-CNS
 
+> **Looking for the step-by-step install?** This doc is the **"why"** —
+> rationale, backend comparison, and recommendation. The **"how"** is in
+> [`docs/secrets-setup.md`](secrets-setup.md): install sops + age, generate
+> machine keys, seed `Monty-CNS-Secrets` from the scaffold, add more machines,
+> rotate, troubleshoot.
+
 Short version: this repo carries **config**. A second private repo carries
 **secrets** (encrypted). The `SessionStart` hook in `claude/hooks/session-start.sh`
 is the glue that pulls both and lands the decrypted values where they need

@@ -17,17 +17,24 @@ committed here is reusable beyond Claude Code if you ever want it.
   fallback for projects that don't define their own.
 - **One concern per skill.** If a skill is trying to do two things, split it.
 
-## What's currently here (round 2 from valor2.0 migration)
+## What's currently here
 
-| Skill | What it does |
-|---|---|
-| `code-style/` | General naming, structure, and anti-patterns across Python, TypeScript, Go, Rust |
-| `error-helper/` | Systematic error triage — read traceback, classify, gather context, first-aid, verify |
-| `explore-codebase/` | Deep multi-file investigation using the Explore subagent (forked context) |
-| `git-guide/` | Common git workflows, conflict resolution, safety rules, branch conventions |
-| `h-scale/` | Capability Honesty Scale (H1-H5) — rate readiness across methodology, data, testing, docs |
-| `perf-audit/` | Backend + frontend performance audit checklist |
-| `test-writer/` | Detect the project's test framework, pick the right layer, write tests that cover edges |
+| Skill | Origin | Purpose |
+|---|---|---|
+| `adversarial-reviewer/` | Upstream: [alirezarezvani/claude-skills](https://github.com/alirezarezvani/claude-skills) (MIT, author: ekreloff) | 3-persona hostile code review — breaks the LLM self-review trap |
+| `code-style/` | Rewritten from valor2.0 | General naming, structure, and anti-patterns across Python, TypeScript, Go, Rust |
+| `error-helper/` | Rewritten from valor2.0 | Systematic error triage — read traceback, classify, gather context, first-aid, verify |
+| `explore-codebase/` | Rewritten from valor2.0 | Deep multi-file investigation using the Explore subagent (forked context) |
+| `git-guide/` | Rewritten from valor2.0 | Git workflows, conflict resolution, safety rules, branch conventions |
+| `h-scale/` | Rewritten from valor2.0 | Capability Honesty Scale (H1–H5) for rating readiness |
+| `karpathy-principles/` | CNS original, attributed to [Andrej Karpathy](https://x.com/karpathy/status/2015883857489522876) | Apply the 4 coding principles (Think / Simple / Surgical / Goals) as a pre-commit self-review |
+| `perf-audit/` | Rewritten from valor2.0 | Backend + frontend + DB performance audit checklist |
+| `test-writer/` | Rewritten from valor2.0 | Framework detection, layer selection, multi-lang templates |
+
+When adapting a skill from an upstream library, keep the attribution in
+an HTML comment at the very top of the `SKILL.md` (below the frontmatter
+if the tooling is strict about it). See `adversarial-reviewer/SKILL.md`
+for the template.
 
 ## Adding a new skill
 

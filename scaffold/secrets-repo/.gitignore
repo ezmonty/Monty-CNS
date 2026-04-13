@@ -1,0 +1,33 @@
+# Block any plaintext secret from sneaking into git.
+# Only ciphertext (.sops.*) should ever be committed.
+
+# Generic secret file patterns
+.env
+.env.*
+!.env.sops.*
+*.key
+!*.sops.key
+*.pem
+!*.sops.pem
+credentials
+credentials.*
+secrets
+secrets.*
+
+# sops temp / decrypted artefacts
+*.dec
+*.plain
+*.plaintext
+.sops.*.tmp
+
+# age private keys — never committed under any circumstances
+keys.txt
+*.age
+!*.sops.age
+
+# Editor / OS junk
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/

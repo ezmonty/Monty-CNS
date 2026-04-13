@@ -1,0 +1,34 @@
+# sops configuration for Monty-CNS-Secrets.
+#
+# Each `age:` entry is a public key for a machine or recovery key that
+# should be able to decrypt. Private keys never appear here — they live
+# in ~/.config/sops/age/keys.txt on each machine, 0600.
+#
+# To add a new machine:
+#   1. Run `age-keygen -o ~/.config/sops/age/keys.txt` on the new machine
+#   2. Copy the `age1...` public key printed after `# public key:`
+#   3. Paste it below with a comment indicating the machine
+#   4. Run `sops updatekeys env.sops.yaml` (and any other encrypted files)
+#   5. Commit + push
+#
+# To remove a machine: delete its line, run `sops updatekeys` on every
+# encrypted file, then rotate the upstream secrets (the removed key has
+# already seen the old values).
+
+creation_rules:
+  - path_regex: '\.sops\.(ya?ml|json|env|toml|ini)$'
+    age: >-
+      age1REPLACE_ME_WITH_LAPTOP_PUBLIC_KEY,
+      age1REPLACE_ME_WITH_DESK_PUBLIC_KEY,
+      age1REPLACE_ME_WITH_WORK_PUBLIC_KEY,
+      age1REPLACE_ME_WITH_HOME_PUBLIC_KEY,
+      age1REPLACE_ME_WITH_RECOVERY_KEY_STORED_OFFLINE
+
+  # File-based secrets (e.g. SSH keys, cert files). Same recipients.
+  - path_regex: '\.sops\.[a-zA-Z0-9]+$'
+    age: >-
+      age1REPLACE_ME_WITH_LAPTOP_PUBLIC_KEY,
+      age1REPLACE_ME_WITH_DESK_PUBLIC_KEY,
+      age1REPLACE_ME_WITH_WORK_PUBLIC_KEY,
+      age1REPLACE_ME_WITH_HOME_PUBLIC_KEY,
+      age1REPLACE_ME_WITH_RECOVERY_KEY_STORED_OFFLINE
