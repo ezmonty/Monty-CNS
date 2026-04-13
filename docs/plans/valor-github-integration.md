@@ -1005,3 +1005,300 @@ auth, rate limit handling, retries, structured logging, and metrics.
 - All phase-2 tests green on Linux and Windows CI
 - Worklog entry `phase-2-client-complete`
 - `core/github_client.py` merged
+
+---
+
+### Phase 3 — Webhook handler
+
+**Goal:** Implement the full webhook receiver pipeline — HMAC
+verification, delivery deduplication, event routing, and async
+handoff to Celery — replacing the empty handler from phase 0.C with
+a production-grade implementation.
+
+**Dependencies:** phase 0 (endpoint stood up, delivery reaching the
+rack), phase 1 (installation token available if handlers need it),
+phase 2 (client available for any synchronous API calls).
+
+**Workstreams (parallel):**
+
+#### Workstream 3.A — HMAC signature verification
+
+- `vgi-3.A.1` Create `webhooks/github/signature.py` with a pure
+  function `verify_signature(body: bytes, signature_header: str,
+  secret: str) -> bool`. Use `hmac.compare_digest` for
+  constant-time comparison. Return `False` on any parse error, not
+  exceptions — callers handle the `False` path.
+- `vgi-3.A.2` In the router, **read the raw body first** via
+  `await request.body()` BEFORE any JSON parsing. This is
+  critical — if FastAPI parses the body and then re-serializes it,
+  the byte sequence changes and the signature will not match. This
+  is the single most common webhook verification bug; call it out
+  explicitly in the module docstring.
+- `vgi-3.A.3` On invalid signature, return HTTP 401 with a generic
+  error body. Do NOT include any detail about why (attacker
+  learns nothing).
+- `vgi-3.A.4` Log every signature failure with the source IP,
+  delivery ID (if present), and time — but NOT the body or the
+  signature value.
+- `vgi-3.A.5` Unit test `tests/unit/github/test_signature.py`:
+  valid signature, wrong secret, malformed `sha256=` prefix,
+  missing header, empty body, body mutation (change one byte →
+  rejection), signature-replay attempt (valid sig, different body).
+
+#### Workstream 3.B — Delivery deduplication
+
+- `vgi-3.B.1` Create `webhooks/github/dedupe.py` with an async
+  function `already_processed(delivery_id: str, redis) -> bool`
+  that uses `redis.set(key, "processed", ex=7*86400, nx=True)`.
+  Return `False` if the key was newly set (not a dup), `True` if
+  it already existed.
+- `vgi-3.B.2` Key format: `gh:delivery:<uuid>`.
+- `vgi-3.B.3` 7-day TTL (covers GitHub's 48-hour retry window with
+  margin).
+- `vgi-3.B.4` Add a paired function
+  `mark_processed(delivery_id: str, redis)` — called AFTER
+  successful processing (so failed deliveries can be retried by
+  GitHub). The initial `already_processed` only does an arrival
+  check; the full "processed" mark happens at task completion.
+- `vgi-3.B.5` Unit test with mocked Redis: new delivery, duplicate,
+  TTL expiry, Redis unavailable (should fail open and let the
+  request through — better to double-process than drop).
+
+#### Workstream 3.C — Event router
+
+- `vgi-3.C.1` Create `webhooks/github/events.py` with a dispatch
+  map `EVENT_HANDLERS: dict[str, Callable]` keyed by GitHub
+  `X-GitHub-Event` header value.
+- `vgi-3.C.2` Each handler is a pure function that takes the
+  parsed payload (as a pydantic model) and returns a Celery task
+  signature to enqueue.
+- `vgi-3.C.3` For unknown events: return 200 with a warning log
+  entry but no enqueue. Don't reject unknown events (GitHub adds
+  new event types; we don't want to error on them).
+- `vgi-3.C.4` Register the phase-4 handler for `pull_request`:
+  on action `opened` or `reopened`, enqueue
+  `github_pr_review_task`.
+- `vgi-3.C.5` Unit test: known event with known action, known
+  event with unknown action, unknown event entirely, malformed
+  payload.
+
+#### Workstream 3.D — Celery enqueue + router assembly
+
+- `vgi-3.D.1` Update `webhooks/github/router.py` to the full
+  pipeline: read raw body → verify signature → check dedupe →
+  parse payload → dispatch to event router → enqueue Celery task
+  → return 200 within 500ms.
+- `vgi-3.D.2` Use FastAPI's `BackgroundTasks` for the Celery
+  enqueue (or direct `.delay()` call — decide based on Valor's
+  existing Celery pattern from `tasks/`).
+- `vgi-3.D.3` Structured log every accepted delivery: delivery_id,
+  event_type, action, repo, enqueued_task_id.
+- `vgi-3.D.4` Test that the response returns in <500ms p99
+  (load test with 100 concurrent deliveries).
+- `vgi-3.D.5` Add `tests/smoke_github_webhook.py` — fabricates a
+  signed delivery and POSTs it to a local instance, asserts 200
+  and that a Celery task was enqueued.
+
+**Milestones:**
+
+1. 🛡️ Invalid signatures return 401 within 10ms (verification is fast)
+2. 🔁 Duplicate `X-GitHub-Delivery` UUIDs are detected in Redis
+3. 🗂️ `pull_request.opened` events dispatch to the correct handler
+4. 🚀 Accepted deliveries enqueue a Celery task and return 200 in <500ms p99
+5. 🚬 `smoke_github_webhook.py` passes end-to-end against a running Valor instance
+
+**Tests (phase 3):**
+
+- Unit: signature verification (8+ cases including replay), dedupe
+  (hit, miss, TTL, Redis down), event router (known, unknown,
+  malformed)
+- Integration: `tests/integration/github/test_webhook_roundtrip.py` —
+  real Valor instance + real Redis, send fabricated signed
+  delivery, assert task enqueued
+- Failure injection: signature fails, dedupe fails, router raises,
+  Celery enqueue fails — each should degrade gracefully and not
+  eat deliveries
+- Security: replay attack (same body, new delivery ID, attacker
+  modifies body), wrong secret, rate-limit abuse (100k requests
+  with bad sigs)
+- Load: 1000 deliveries/min sustained for 10 minutes; p99 ack
+  latency < 500ms, zero lost deliveries (counted via dedupe cache
+  cardinality)
+
+**Exit criteria:**
+
+- All 5 milestones achieved
+- All phase-3 tests green on Linux and Windows CI
+- Failure-injection suite green
+- Security tests green
+- Load test sustained for 10 minutes without degradation
+- Worklog entry `phase-3-webhook-complete`
+- `webhooks/github/` directory merged to feature branch
+
+---
+
+### Phase 4 — PR review bot business logic
+
+**Goal:** Implement the actual "PR opened → Valor reviews → comment
+posted" workflow that ships value to Remedy Reconstruction. This is
+the first real feature of the integration.
+
+**Dependencies:** phases 0–3 complete. Webhook deliveries are arriving,
+auth works, client is callable.
+
+**Workstreams (parallel):**
+
+#### Workstream 4.A — PR metadata fetcher
+
+- `vgi-4.A.1` Create `tasks/github_pr_review.py` with a Celery task
+  `github_pr_review_task(delivery_id: str, payload: dict)`.
+- `vgi-4.A.2` Task extracts `owner`, `repo`, `pr_number`,
+  `installation_id` from the payload (pydantic model).
+- `vgi-4.A.3` Use `github_client.rest.pulls.get(owner, repo, number)`
+  to fetch full PR metadata including title, body, base sha, head
+  sha, mergeable, changed file count.
+- `vgi-4.A.4` Handle the edge case where the PR was closed between
+  webhook delivery and task execution (fetch returns `state: "closed"`
+  → log and skip).
+- `vgi-4.A.5` Unit test with mocked client.
+
+#### Workstream 4.B — Diff fetcher and analyzer
+
+- `vgi-4.B.1` Fetch the PR diff via `client.rest.pulls.list_files()`
+  — returns file list with patch data per file.
+- `vgi-4.B.2` Implement guardrails: if the PR has > 500 files or
+  > 10,000 changed lines, truncate the diff sent to the agent and
+  flag `truncated: True` in the comment.
+- `vgi-4.B.3` Classify files by area: `frontend`, `backend`,
+  `infra`, `docs`, `tests`, `config`. Uses simple path patterns
+  initially; can be refined per customer later.
+- `vgi-4.B.4` Unit test with fake diff fixtures of varying sizes.
+
+#### Workstream 4.C — Valor agent dispatcher
+
+- `vgi-4.C.1` Prepare the agent input in Valor's V2 envelope format:
+  ```json
+  {
+    "command": "review_pr",
+    "data": {
+      "repo": "remedy/cons-os",
+      "pr_number": 123,
+      "title": "...",
+      "body": "...",
+      "diff": "<patch text or summary>",
+      "files": [{"path": "...", "area": "backend", "additions": 10}, ...],
+      "truncated": false
+    },
+    "session_id": "gh-delivery-<uuid>"
+  }
+  ```
+- `vgi-4.C.2` POST to MontyCore's `/ask` endpoint (host/port from
+  `core/config.py`). Expect a V2 envelope response.
+- `vgi-4.C.3` Handle MontyCore unavailability: retry up to 3 times
+  with backoff, then fall back to a "review unavailable" comment
+  with a correlation ID the operator can use to investigate.
+- `vgi-4.C.4` Identify the target agent — uses Valor's existing
+  code review agent if one exists, otherwise creates a minimal
+  new agent `agents/github_pr_reviewer.py` (see 4.F).
+- `vgi-4.C.5` Unit test with mocked MontyCore responses:
+  success, 5xx, timeout, malformed envelope.
+
+#### Workstream 4.D — Comment formatter
+
+- `vgi-4.D.1` Create `tasks/github_pr_review_formatter.py` with a
+  function `format_review_comment(review: dict, metadata: dict)
+  -> str` that produces a markdown comment.
+- `vgi-4.D.2` Template structure:
+  ```markdown
+  ## 🤖 Valor Bot — PR Review
+
+  **Scope:** <N files, M lines changed>
+  <if truncated: "⚠️ Large PR — review based on partial diff">
+
+  ### Summary
+  <1–2 sentences>
+
+  ### Findings
+  - **severity**: description (file:line)
+  - ...
+
+  ### Positive signals
+  - ...
+
+  ---
+  *Generated by Valor <version> · delivery <short-uuid> · <timestamp>*
+  ```
+- `vgi-4.D.3` Sanitize any user-supplied content from the PR that
+  ends up in the comment (no XSS risk since it's markdown in a
+  GitHub comment, but still defensively escape).
+- `vgi-4.D.4` Unit test with fixture review payloads.
+
+#### Workstream 4.E — Comment poster with idempotent edit
+
+- `vgi-4.E.1` Post the comment via
+  `client.rest.issues.create_comment(owner, repo, issue_number, body)`
+  (GitHub treats PR comments as issue comments for this API).
+- `vgi-4.E.2` **Idempotency requirement:** before posting, check
+  if the bot has already commented on this PR for this head sha.
+  Query `client.rest.issues.list_comments(owner, repo, issue_number)`
+  and look for a comment authored by the App with a trailer line
+  `<!-- valor-review head=<sha> -->`.
+- `vgi-4.E.3` If a matching comment exists, **edit** it with
+  `update_comment()` instead of creating a new one. This handles
+  webhook retries and PR pushes correctly.
+- `vgi-4.E.4` Add the trailer line to every comment so future
+  runs can identify it.
+- `vgi-4.E.5` Unit test: first post creates comment; second post
+  with same head sha edits; second post with different head sha
+  creates new comment; same PR but closed → no action.
+
+#### Workstream 4.F — Valor side: code review agent
+
+- `vgi-4.F.1` If Valor doesn't already have a code review agent
+  reachable via `command: "review_pr"`, create a minimal one at
+  `agents/github_pr_reviewer.py` following the V2 envelope pattern
+  used by other Valor agents.
+- `vgi-4.F.2` The initial agent can be a thin wrapper that applies
+  simple rules (no tests? flag. large diff? flag. secret-like
+  regex matches? flag.) — serves as a placeholder until a smarter
+  review agent is built in a later phase.
+- `vgi-4.F.3` Register in `configs/agent_processes.json` following
+  the existing pattern.
+- `vgi-4.F.4` Smoke test `tests/smoke_github_pr_reviewer_agent.py` —
+  hits the agent's `/ask` with a fabricated diff payload, asserts
+  valid V2 envelope response.
+
+**Milestones:**
+
+1. 🧪 A test PR on the sandbox repo triggers a Celery task that completes
+2. ✍️ The task produces a markdown review comment
+3. 📮 The comment is posted to the PR via the GitHub API
+4. 🔁 A second delivery for the same head sha edits the comment instead of posting a duplicate
+5. 🌊 A new push to the PR (different head sha) creates a new comment, leaving the old one intact
+6. ⚠️ MontyCore unavailability produces a fallback "review unavailable" comment, not a 500 error
+
+**Tests (phase 4):**
+
+- Unit: each of the 6 workstreams tested in isolation with mocks
+- Integration: `tests/integration/github/test_pr_review_e2e.py` —
+  real sandbox repo, open a fabricated PR, wait for comment, assert
+  structure
+- End-to-end: real PR opened on `remedy/valor-bot-test-sandbox`
+  manually, observe comment appear within 2 minutes
+- Failure injection: MontyCore returns 5xx, MontyCore times out,
+  GitHub API rejects comment post, diff too large, head sha changes
+  mid-task
+- Security: PR from a fork (do NOT execute any code from the diff,
+  only read it as text), PR with malicious markdown (injection
+  attempts into the comment)
+- Performance: 500-line diff end-to-end < 30 seconds p95
+
+**Exit criteria:**
+
+- All 6 milestones achieved
+- All phase-4 tests green on Linux and Windows CI
+- A real PR on the sandbox repo has a real bot comment posted in
+  production-equivalent conditions
+- Worklog entry `phase-4-pr-review-bot-complete`
+- `tasks/github_pr_review*.py` and `agents/github_pr_reviewer.py`
+  merged
