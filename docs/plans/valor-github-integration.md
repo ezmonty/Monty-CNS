@@ -509,3 +509,188 @@ source for each one. Any future failure mode we learn from in the
 course of building the Valor integration should be added to this
 section as lesson 5.7, 5.8, etc., along with the corresponding plan
 decision.
+
+## 6. Coordination rules
+
+The baseline conventions for coordinating parallel work across this
+plan live in `docs/plans/README.md` (WORKLOG claim protocol, commit
+format, handoff protocol, conflict resolution). Read that doc first;
+this section adds only what's plan-specific.
+
+### 6.1 Worklog
+
+This plan's worklog is at:
+
+```
+docs/plans/worklogs/valor-github-integration.md
+```
+
+The file is created as an empty skeleton in phase 0, milestone 0.C.
+Every worker (human or AI subagent) appends an entry when they claim
+a task, hit a blocker, hand off, or complete. Worklog entries are
+never rewritten or deleted — the file is an append-only journal.
+
+The skeleton structure:
+
+```markdown
+# Valor GitHub Integration — WORKLOG
+
+Append-only. Newest entries at the bottom.
+
+---
+
+## <ISO timestamp> — <worker-id> — <phase-id>.<workstream-id> — <short task name>
+Status: claimed | in-progress | blocked | handing-off | done
+Branch: phase-<N>/<workstream-letter>-<short-slug>
+Files planned: <comma-separated>
+Commits: [<hash1>, <hash2>, ...]
+Notes: <one or two sentences on what, why, and any decisions>
+
+---
+```
+
+### 6.2 Branch naming
+
+Workstreams within a phase each get their own branch off the feature
+branch `valor/github-integration`. The naming pattern is:
+
+```
+valor/github-integration/phase-<N>/<workstream-letter>-<short-slug>
+```
+
+Examples:
+
+```
+valor/github-integration/phase-0/A-register-app
+valor/github-integration/phase-1/B-installation-token-fetcher
+valor/github-integration/phase-3/D-celery-enqueue
+```
+
+The top-level integration branch `valor/github-integration` is the
+merge target for all phase workstream branches. Only when all
+workstreams in a phase complete and CI is green does the phase branch
+merge to `main`, fast-forward only.
+
+### 6.3 Task ID format
+
+Each task inside a workstream gets a stable identifier so the worklog
+entries, commit messages, and test fixtures can reference it
+unambiguously:
+
+```
+vgi-<phase>.<workstream>.<task-number>
+```
+
+Examples:
+
+- `vgi-0.A.1` — phase 0, workstream A, task 1 (Register app with Remedy admin)
+- `vgi-2.B.3` — phase 2, workstream B, task 3 (Add retry middleware to GitHub client)
+- `vgi-6.D.2` — phase 6, workstream D, task 2 (HMAC signature-replay failure test)
+
+Every task in section 7 below has a task ID. Every commit on a
+workstream branch cites its task ID in the commit message trailer.
+
+### 6.4 Commit message format
+
+All commits on this plan's branches follow the conventional-commit
+format already used in `docs/plans/README.md`, with two plan-specific
+trailer lines:
+
+```
+<type>(<scope>): <subject>
+
+<body — what changed and why>
+
+Task: vgi-<phase>.<workstream>.<task>
+Phase: <phase-id>
+```
+
+Types match the ones in `docs/plans/README.md`: `feat`, `fix`,
+`refactor`, `test`, `docs`, `chore`, `perf`, `style`, `ci`.
+
+Example:
+
+```
+feat(webhooks/github): add HMAC signature verification
+
+Pure function in webhooks/github/signature.py. Uses hmac.compare_digest
+for constant-time comparison. 100% branch coverage including malformed
+sig, missing header, wrong secret, body mutation. Follows the FastAPI
+pattern from docs/security/github-auth.md section 3.
+
+Task: vgi-3.A.1
+Phase: phase-3
+```
+
+### 6.5 PR / merge gate
+
+A workstream branch may merge into the phase-level integration branch
+only when:
+
+1. All tests for that workstream pass (unit + integration as
+   applicable)
+2. At least one other worker (human or AI subagent) has reviewed the
+   diff and approved
+3. The worklog entry for the task has status `done` with the commit
+   hashes listed
+4. The commit message cites the task ID
+
+A phase-level branch may merge into `main` only when:
+
+1. Every workstream in the phase has merged into it
+2. Every phase milestone is achieved (as listed in section 7)
+3. The full failure-injection test suite (section 5.4) passes
+4. CI is green on the cross-platform matrix
+5. The worklog has a phase-complete entry summarizing what was built
+
+Merge to `main` is always fast-forward. No merge commits on `main`.
+Phase branches are deleted after merge (with the history preserved
+via the fast-forward chain).
+
+### 6.6 AI subagent coordination
+
+When an AI subagent claims a task, the same rules apply. In addition:
+
+- **The subagent's parent session is responsible** for its worklog
+  entries. If the subagent completes or abandons a task without
+  updating the worklog, the parent session must backfill the entry.
+- **Subagents should be given explicit task IDs**, not vague
+  assignments. "Implement vgi-2.A.1" is correct; "go build the
+  auth module" is not.
+- **Subagents should produce self-contained commits.** A subagent's
+  commit should not depend on another uncommitted change.
+- **Subagents' tool permissions are narrowed** via the `PreToolUse`
+  hooks in CNS. They cannot `git push --force`, `rm -rf`,
+  `git reset --hard`, or touch secret-like files directly.
+- **Subagents acting on behalf of the project lead inherit the lead's
+  git identity** — their commits appear as the lead, with a trailer
+  line indicating AI authorship:
+
+  ```
+  https://claude.ai/code/session_<session-id>
+  ```
+
+See `docs/security/actor-model.md` section on "AI acting as a human
+operator" for the full permission model.
+
+### 6.7 Conflict resolution
+
+If two workers claim the same task, the later claimant yields. The
+worklog is the source of truth — always check it before claiming.
+
+If the earlier claimant has been idle on a task for more than 30
+minutes (no worklog update, no commits) and the later claimant needs
+it, the later claimant may take over after:
+
+1. Appending a `reclaim` entry to the worklog with justification
+2. Creating a fresh branch off the phase branch
+3. Starting from the phase's clean state, not the abandoned branch
+
+Abandoned branches are left in place but not merged. They can be
+inspected for partial work that might inform the reclaimant's
+approach.
+
+If two workers push conflicting changes to the same file on the same
+phase branch, the later push rebases, resolves conflicts locally,
+and force-pushes their own branch (never the phase branch itself).
+The phase branch is only advanced via reviewed merges.
