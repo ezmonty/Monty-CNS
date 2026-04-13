@@ -310,3 +310,202 @@ Celery worker.**
 | Tailscale (self-hosting.md) | Production fronting for the webhook URL |
 
 The plan is **mostly glue** on top of existing patterns. That's deliberate — the less new infrastructure we introduce, the less novel failure surface we own.
+
+## 5. Dogfood lessons
+
+Over the course of the Monty-CNS setup session, we hit six specific
+failure modes while bootstrapping this system on a real machine. Each
+one is a concrete teaching moment. The plan embeds each as an explicit
+design decision so the Valor integration does not repeat the mistake.
+
+### 5.1 Sandbox vs. real divergence — verify the round trip early
+
+**What happened:** For the first nine turns of the CNS session, I
+pushed commits to what I thought was the real `github.com/ezmonty/Monty-CNS`
+repository. It turned out my git remote was a sandbox-local proxy at
+`http://127.0.0.1:XXXX` that never reached real GitHub. Nothing I'd
+"committed and pushed" actually existed on the user's account. The
+discovery came ~3 hours into the session when a `curl` to the real
+raw URL returned 404.
+
+**Why it matters:** infrastructure that *looks* like it's working in
+dev can silently diverge from the production state it's supposed to
+mirror. Every abstraction layer (proxy, test double, mock, staging
+clone, local fake) is a potential reality gap.
+
+**Plan decision (phase 0):** **end-to-end verification is a phase-0
+milestone, not a phase-7 afterthought.** Before any functional work
+starts, we prove that a webhook delivery originating from real
+`github.com` reaches the real Valor production host and appears in
+real logs. The proof step is: click "Redeliver" on a test delivery in
+the GitHub App admin UI and observe the Valor log entry. Until that
+loop is verified, no phase-1 work begins. Phase 0 is explicitly
+blocked on this verification.
+
+### 5.2 OS defaults silently differ — multi-OS CI matrix from day 1
+
+**What happened:** sops's default key file path is
+`~/.config/sops/age/keys.txt` on Linux and
+`~/Library/Application Support/sops/age/keys.txt` on macOS. The CNS
+`activate-secrets.sh` wrote the key to the Linux path on both OSes,
+which meant sops couldn't find it on the macOS user's machine when
+they tried to edit a secret manually. The fix was a symlink. The
+bigger fix was: test the tool on both OSes before shipping it.
+
+We also hit bash 3.2 (macOS default) vs bash 4/5 syntax differences,
+missing `python3` on old macOS, and Claude Code binary compatibility
+issues with pre-Monterey macOS.
+
+**Why it matters:** "works on my machine" is the oldest bug in the
+book, and it compounds when the thing you're building is a tool
+specifically meant to run everywhere.
+
+**Plan decision (phase 1):** **the CI matrix tests Linux AND Windows
+from the first phase**, matching Valor's existing `ship-gate.yml`
+pattern which already runs both. The new `test-github-integration`
+job is added to both OS paths in the gate, not bolted on to just
+Linux. macOS is not in Valor's existing matrix but the plan adds a
+targeted macOS developer-only smoke-test script (since Remedy's dev
+team may use Macs). Cross-platform behavior differences are caught at
+the first commit, not at customer handoff.
+
+### 5.3 Scaffold files with comments break downstream parsers
+
+**What happened:** CNS's `scaffold/secrets-repo/env.sops.yaml.example`
+shipped with a 15-line comment block explaining what the file was
+for. When a user first opened the encrypted version of that file with
+`sops env.sops.yaml`, the comment block survived into the plaintext
+editor buffer. On save, the comments interacted badly with the user's
+edits and produced a line-23 YAML parse error that blocked the whole
+edit cycle. The "helpful" scaffold comment block caused a real
+production incident.
+
+**Why it matters:** scaffold/template files are input to downstream
+parsers. Every comment, every whitespace rule, every explanatory
+paragraph is a potential trip-hazard for the next tool in the pipe.
+
+**Plan decision (phase 0 + phase 1):** **every machine-read file in
+this plan contains zero decorative comments.** Configuration files
+(`configs/github_app.json`, `.env.example` additions) are minimum
+viable — just the keys and placeholder values. Explanation lives in
+sibling `README.md` files, not in-line in the machine-read file.
+Sample YAML payloads for tests are constructed programmatically in
+test code, never committed as "example" files that get accidentally
+re-parsed. The dogfood regression suite (section 8) includes a test
+that verifies every scaffold file in the repo parses cleanly.
+
+### 5.4 Error paths are under-tested — deliberate failure injection
+
+**What happened:** CNS's `sops -e /tmp/env.plain.yaml > env.sops.yaml`
+command was tested on the happy path. When the `sops` invocation
+failed (because of a missing creation rule), the shell had already
+truncated the target file to zero bytes via the `>` redirect, and the
+failure didn't roll back. Result: a corrupted `env.sops.yaml` that
+couldn't be decrypted and had no backup. The user was locked out
+until we recovered via a clean rewrite.
+
+Related: `sops --age <pubkey>` doesn't bypass `.sops.yaml` creation
+rules as I'd expected. Python wasn't present on the target macOS, so
+a Python-based YAML escaping solution failed. The block-scalar YAML
+syntax worked as a fallback but wasn't documented anywhere.
+
+**Why it matters:** happy-path tests exercise 5% of the state space.
+Real systems spend most of their operational life in failure modes,
+and the failure modes are where data loss happens.
+
+**Plan decision (phase 6 — QA suite):** **dedicated failure-injection
+test suite** that exercises:
+- HMAC verification with malformed, missing, and wrong-key signatures
+- Webhook delivery with invalid JSON payloads
+- Installation token refresh failures (simulated 401, 500, timeout)
+- GitHub API rate limit responses (simulated 429 with `Retry-After`)
+- Redis unavailable during dedupe check
+- Celery worker crash mid-task
+- Vault unavailable at worker startup
+- Partial webhook delivery (truncated body)
+- Replay attacks (same delivery ID, different body)
+- Signature replay (valid signature, different body)
+- Simultaneous deliveries for the same PR (race)
+- GitHub API edit-comment failure after successful post
+
+Each failure mode has a named test. CI does not green until every
+failure-injection test passes. The tests are tagged and runnable as
+a named suite: `pytest -m failure_injection`.
+
+### 5.5 Credential caching is a footgun — rotation requires cache invalidation
+
+**What happened:** After rotating a GitHub PAT on CNS, the user's Mac
+kept trying to push with the old (revoked) PAT because macOS Keychain
+cached it silently. Git showed "Invalid username or token" errors
+until we manually erased the cached credential with
+`git credential-osxkeychain erase`. The rotation was complete on the
+GitHub side but incomplete on the client side.
+
+**Why it matters:** rotation is a process that spans multiple systems.
+If any one system caches the credential without invalidating on
+rotate, you get a partial rotation state that's worse than no
+rotation (since the operator believes the credential is fresh).
+
+**Plan decision (phase 7 — runbook):** **rotation procedures include
+explicit cache-invalidation steps for every layer that caches the
+credential.** For the Valor App:
+1. Generate a new private key via github.com/apps/valor-bot
+2. Store in Vault as `prod/github-app/private-key-v2`
+3. Update worker config to try v2 first, fall back to v1
+4. Deploy workers (they'll fetch v2 at startup)
+5. **Invalidate the Redis installation token cache** —
+   `redis-cli -n 0 DEL github:installation_token:*`
+6. Revoke v1 from github.com
+7. Remove v1 from Vault
+8. Remove fallback code
+
+Step 5 is the one that would get skipped if the playbook didn't
+enumerate it. The runbook's rotation drill (which section 7 requires
+be practiced quarterly) tests that step 5 actually happens by
+monitoring `github:installation_token:*` key counts before and after.
+
+### 5.6 Documentation without recovery paths isn't documentation
+
+**What happened:** CNS's initial `docs/secrets-setup.md` walked the
+user through the happy path of encrypting secrets. When the happy
+path failed (the YAML line-23 error, the sops creation-rule error,
+the macOS sops path error), there was nothing in the docs telling
+the user what to do next. Every recovery was improvised in chat.
+
+**Why it matters:** docs are read when something is broken. Docs that
+only cover "how to use this when it works" abandon the reader
+exactly when they need help most.
+
+**Plan decision (section 10 — runbook):** **every operational
+procedure in the Valor GitHub integration runbook has a paired
+recovery path**. Format:
+
+```
+## Procedure: <name>
+
+### Happy path
+1. Step
+2. Step
+3. Step
+
+### If <step> fails
+- Symptom: <what you see>
+- Cause: <likely reasons>
+- Fix: <exact commands>
+- If fix doesn't work: escalate to <person/channel>
+```
+
+Every step that can fail has an "if this fails" subsection. Every
+"if this fails" subsection either resolves the failure or points at
+a named escalation path. No loose ends. The runbook is not
+considered complete until every happy-path step has a paired
+recovery path, verified by peer review.
+
+---
+
+These six lessons are not hypothetical. They all happened during the
+CNS session on 2026-04-13. The session transcript is the empirical
+source for each one. Any future failure mode we learn from in the
+course of building the Valor integration should be added to this
+section as lesson 5.7, 5.8, etc., along with the corresponding plan
+decision.
