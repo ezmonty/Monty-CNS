@@ -344,123 +344,227 @@ Error unmarshalling file: Error unmarshaling input YAML: yaml: line 23: could no
 
 The file on disk may be in one of three states: (a) still
 encrypted and intact, (b) empty (shell `>` redirect truncated it
-before `sops` ran), or (c) half-written plaintext. Treat all three
-the same way — start over from scratch with a clean YAML written
-via bash heredoc or Python.
+before `sops` ran), or (c) half-written plaintext. The recovery
+flow below handles all three the same way: **write plaintext to a
+gitignored intermediate file, encrypt to a temp target, verify by
+roundtrip decrypt, and only then atomically replace** the real
+`env.sops.yaml`. If anything fails, the original ciphertext
+(however broken) stays untouched and the plaintext intermediate
+is shredded.
 
-### Option 1: block-scalar YAML (no escaping required)
+### Option 1: bash + block-scalar YAML (recommended)
 
 YAML literal block scalar syntax (`|-`) takes the value on the
-next line(s), indented, with no string escaping. No matter what
-characters are in the value — quotes, backslashes, colons, dollar
-signs — the block scalar form survives them. This is the
-"nothing can go wrong" escape hatch.
+next line(s) with zero string escaping — quotes, backslashes,
+colons, dollar signs all pass through literally. Combined with
+the intermediate-file + atomic-swap pattern below, this is the
+most forgiving recovery path.
 
-Run this in the secrets repo (pastes silently, never echoes the
-credential values):
+**Run this in the secrets repo — bash required (`read -s` is a
+bash extension, not POSIX):**
 
 ```bash
 (
-  cd ~/src/Monty-CNS-Secrets || exit 1
+  # Require bash — read -s is not POSIX
+  [ -n "${BASH_VERSION:-}" ] || {
+    echo "error: this block requires bash (uses read -s)" >&2
+    exit 1
+  }
 
+  cd ~/src/Monty-CNS-Secrets || {
+    echo "error: secrets repo not cloned at ~/src/Monty-CNS-Secrets" >&2
+    echo "       clone it first, or set \$SECRETS_REPO and adjust the path" >&2
+    exit 1
+  }
+
+  # Tight permissions on everything we create in this subshell
+  umask 077
+
+  # Silent input — values never echo to terminal or shell history
   read -s -p "Anthropic API key (sk-ant-...): " ANTHROPIC; echo
   read -s -p "GitHub PAT (github_pat_... or ghp_...): " GITHUB; echo
 
+  # Validate format + length BEFORE touching anything on disk
   bad=0
   case "$ANTHROPIC" in sk-ant-*) ;; *) echo "⚠️  Anthropic key wrong format"; bad=1 ;; esac
   case "$GITHUB"    in github_pat_*|ghp_*) ;; *) echo "⚠️  GitHub PAT wrong format"; bad=1 ;; esac
-  if [ ${#ANTHROPIC} -lt 50 ]; then echo "⚠️  Anthropic key too short"; bad=1; fi
-  if [ ${#GITHUB}    -lt 40 ]; then echo "⚠️  GitHub PAT too short";    bad=1; fi
-  if [ "$bad" -eq 1 ]; then echo "Aborting — no file written."; exit 1; fi
+  if [ ${#ANTHROPIC} -lt 50 ]; then echo "⚠️  Anthropic key too short (${#ANTHROPIC} chars)"; bad=1; fi
+  if [ ${#GITHUB}    -lt 40 ]; then echo "⚠️  GitHub PAT too short (${#GITHUB} chars)"; bad=1; fi
+  if [ "$bad" -eq 1 ]; then
+    echo "Aborting — existing env.sops.yaml (if any) is untouched." >&2
+    exit 1
+  fi
 
+  # Write plaintext to .env.plain, NOT to env.sops.yaml.
+  #
+  # Critical safety:
+  #   1. .env.plain matches the secrets-repo .gitignore pattern
+  #      '.env.*' — it physically cannot be committed.
+  #   2. The third creation rule in .sops.yaml matches *.plain, so
+  #      sops finds the right recipients when we encrypt it.
+  #   3. The existing env.sops.yaml on disk is NOT touched until
+  #      the end, after verification. If anything goes wrong
+  #      mid-encrypt, the original ciphertext stays intact.
   {
     printf 'ANTHROPIC_API_KEY: |-\n'
     printf '  %s\n' "$ANTHROPIC"
     printf 'GITHUB_PERSONAL_ACCESS_TOKEN: |-\n'
     printf '  %s\n' "$GITHUB"
-  } > env.sops.yaml
+  } > .env.plain
 
-  sops -e -i env.sops.yaml
-
-  if head -1 env.sops.yaml | grep -q 'ENC\['; then
-    echo "✅ Encrypted. First lines:"
-    head -6 env.sops.yaml
-  else
-    echo "❌ Encryption failed — deleting plaintext for safety"
-    rm -f env.sops.yaml
+  # Encrypt to a temp output. Force YAML input/output type because
+  # .env.plain has no standard sops-recognized extension.
+  if ! sops --input-type yaml --output-type yaml -e .env.plain > env.sops.yaml.new; then
+    echo "❌ sops -e failed — see error above" >&2
+    rm -f .env.plain env.sops.yaml.new
+    exit 1
   fi
+
+  # Ground-truth verification: round-trip decrypt. This actually
+  # exercises the sops state machine — if it decrypts cleanly,
+  # the file IS valid ciphertext. (Much stronger than grepping
+  # for 'ENC[' in the output.)
+  if ! sops -d env.sops.yaml.new > /dev/null 2>&1; then
+    echo "❌ roundtrip verification failed — new file is not valid ciphertext" >&2
+    echo "   shredding temp files" >&2
+    rm -f .env.plain env.sops.yaml.new
+    exit 1
+  fi
+
+  # Atomic replace. The old env.sops.yaml (real ciphertext,
+  # empty, or absent) is swapped out only AFTER verification.
+  # mv within the same filesystem is atomic.
+  mv env.sops.yaml.new env.sops.yaml
+
+  # Non-negotiable: delete the plaintext intermediate
+  rm -f .env.plain
+
+  # Final sanity check
+  if [ -f .env.plain ]; then
+    echo "⚠️  .env.plain still exists — delete manually: rm -f .env.plain" >&2
+    exit 1
+  fi
+
+  echo "✅ env.sops.yaml is encrypted and roundtrip-verified."
+  echo "   Commit with: git add env.sops.yaml && git commit -m 'rotate secrets' && git push"
 )
 ```
 
-The block scalar layout looks like:
+Key design points:
 
-```yaml
-ANTHROPIC_API_KEY: |-
-  sk-ant-api03-actual-key-with-any-characters-here
-GITHUB_PERSONAL_ACCESS_TOKEN: |-
-  github_pat_actual-value-here
-```
-
-Key points:
-
-- `|-` means "literal block scalar, strip trailing newline"
-- The value is the indented line(s) immediately below
-- **No escaping required** for any character — not `"`, not `\`,
-  not `:`, not `$`
-- `sops -e -i <file>` encrypts in place, which matches the
-  existing `.sops.yaml` creation rule because the filename ends
-  in `.sops.yaml`
+- `.env.plain` is the intermediate. It matches `.gitignore` and
+  the third sops creation rule. It can never be committed.
+- `env.sops.yaml.new` is the temp encrypted target. The real
+  `env.sops.yaml` is not touched until after verification.
+- `sops -d env.sops.yaml.new > /dev/null` is a real decryption
+  roundtrip, not a text heuristic — if it returns 0, the file is
+  definitively valid sops ciphertext.
+- `mv` within the same filesystem is atomic; the swap is
+  all-or-nothing.
+- On any failure, both temp files are shredded with `rm -f` and
+  the original `env.sops.yaml` is untouched.
+- `umask 077` ensures both temp files are `0600` from creation.
+- `read -s` keeps credentials out of shell history and terminal
+  echo.
 
 ### Option 2: Python with `json.dumps` (if Python 3 is available)
 
-If you have Python 3 on the machine, this is slightly cleaner:
+If you have Python 3 on the machine, this is a smaller block
+using the same atomic-swap pattern:
 
 ```bash
 cd ~/src/Monty-CNS-Secrets
 
 python3 <<'PYEOF'
-import getpass, json
+import getpass, json, os, stat, subprocess, sys
+
+# Validate
 anthropic = getpass.getpass('Anthropic API key: ')
 github    = getpass.getpass('GitHub PAT: ')
-with open('env.sops.yaml', 'w') as f:
+if len(anthropic) < 50 or not anthropic.startswith('sk-ant-'):
+    sys.exit("⚠️  Anthropic key format check failed")
+if len(github) < 40 or not (github.startswith('github_pat_') or github.startswith('ghp_')):
+    sys.exit("⚠️  GitHub PAT format check failed")
+
+# Write plaintext to .env.plain (gitignored), 0600
+with open('.env.plain', 'w') as f:
     f.write(f'ANTHROPIC_API_KEY: {json.dumps(anthropic)}\n')
     f.write(f'GITHUB_PERSONAL_ACCESS_TOKEN: {json.dumps(github)}\n')
-PYEOF
+os.chmod('.env.plain', stat.S_IRUSR | stat.S_IWUSR)
 
-sops -e -i env.sops.yaml
+# Encrypt to temp
+r = subprocess.run(
+    ['sops', '--input-type', 'yaml', '--output-type', 'yaml', '-e', '.env.plain'],
+    capture_output=True, text=True)
+if r.returncode != 0:
+    os.remove('.env.plain')
+    sys.exit(f"❌ sops -e failed: {r.stderr}")
+with open('env.sops.yaml.new', 'w') as f:
+    f.write(r.stdout)
+os.chmod('env.sops.yaml.new', stat.S_IRUSR | stat.S_IWUSR)
+
+# Verify via roundtrip decrypt
+v = subprocess.run(['sops', '-d', 'env.sops.yaml.new'], capture_output=True)
+if v.returncode != 0:
+    os.remove('.env.plain')
+    os.remove('env.sops.yaml.new')
+    sys.exit(f"❌ roundtrip verification failed: {v.stderr.decode()}")
+
+# Atomic swap + cleanup
+os.replace('env.sops.yaml.new', 'env.sops.yaml')
+os.remove('.env.plain')
+print("✅ env.sops.yaml is encrypted and roundtrip-verified.")
+print("   Commit with: git add env.sops.yaml && git commit -m 'rotate secrets' && git push")
+PYEOF
 ```
 
-`json.dumps` produces valid JSON strings, and every JSON string is
-a valid YAML double-quoted string. Escaping handled automatically.
+`json.dumps` produces valid JSON strings; every JSON string is
+a valid YAML double-quoted string; escaping is handled
+automatically. `os.replace` is the Python atomic-rename primitive
+(equivalent to `mv` on POSIX).
 
 ### What to avoid during recovery
 
-- **Don't** pipe shell variables into a `cat > file <<EOF` heredoc
-  with double-quoted YAML strings. If the value contains `"` or
-  `\`, the YAML breaks. Use block-scalar (option 1) or `json.dumps`
-  (option 2) instead.
+- **Don't** write plaintext directly to `env.sops.yaml`. That name
+  is tracked and one stray `git add` away from committing
+  credentials. Always use a gitignored intermediate
+  (`.env.plain`) and atomically `mv`/`os.replace` the verified
+  encrypted file into place.
+- **Don't** use `sops -e -i env.sops.yaml` during recovery. The
+  `-i` flag encrypts in place, which means: write plaintext to
+  the real filename, then try to encrypt. If sops crashes
+  mid-encrypt, real credentials sit on disk in a committed
+  filename. The intermediate-file pattern above is the safer
+  alternative.
+- **Don't** use `grep -q 'ENC['` as proof of encryption. It's a
+  text heuristic that can false-positive if sops outputs a
+  partial file. `sops -d <file> > /dev/null` is the ground truth.
+- **Don't** pipe shell variables into a `cat > file <<EOF`
+  heredoc with double-quoted YAML strings. Values containing
+  `"` or `\` break the YAML. Block-scalar (bash option 1) or
+  `json.dumps` (Python option 2) are the safe ways.
 - **Don't** run `sops -e /tmp/plain.yaml > env.sops.yaml` without
-  first checking that `/tmp/plain.yaml` exists — `>` truncates
+  first checking that `/tmp/plain.yaml` exists. `>` truncates
   the target before `sops` runs, so a failed `sops` invocation
   leaves `env.sops.yaml` as 0 bytes.
 - **Don't** commit a plaintext file you created during recovery.
-  Always `rm -f .env.plain` / `rm -f /tmp/env.plain.yaml`
-  immediately after a successful encrypt. The `.gitignore` in the
-  scaffold catches common names but don't rely on it.
+  The `.gitignore` in the scaffold catches `.env.*` but verify
+  with `git status` before every commit during recovery.
 - **Don't** use `sops --age <pubkey>` expecting it to bypass the
   creation rule lookup. The `--age` flag overrides recipients
-  *within a matched rule* but doesn't skip rule matching entirely.
-  If sops can't match a rule for your filename, it errors no
-  matter what flags you pass.
+  *within a matched rule* but doesn't skip rule matching
+  entirely. If sops can't match a rule for your filename, it
+  errors regardless of flags.
 
 ### If recovery still fails
 
 Paste the exact sops error into the ops channel with:
 - The file path you're trying to encrypt
-- The output of `ls -la env.sops.yaml` (size matters)
+- The output of `ls -la env.sops.yaml .env.plain env.sops.yaml.new`
 - The output of `cat .sops.yaml` (redact any recipient you
   consider private)
 - The platform (`uname -a` on macOS/Linux)
+- The sops version (`sops --version`)
 
 Escalate to someone with a working age key from another machine
 who can decrypt + re-seed the file from their side.
