@@ -1,8 +1,12 @@
 # Migration log: valor2.0 → Monty-CNS
 
-First consolidation pass, mining `ezmonty/valor2.0` for Claude config that
-belongs at the user level rather than in the project repo. Source audited at
-commit HEAD of `main` on the date of this commit.
+Cross-repo consolidation. Audited `ezmonty/valor2.0` (public, main branch).
+Two passes so far:
+
+- **Round 1:** commands + settings hooks (mechanical copy).
+- **Round 2:** skills that were *generic concepts* buried under Valor
+  branding — rewritten from scratch with the branding and hardcoded
+  paths stripped out.
 
 ## What moved
 
@@ -63,45 +67,55 @@ V2 envelope format and reads from `NOTES.md`. Both are project-specific:
 The user-level hooks and the project hooks compose cleanly — Claude Code
 runs both.
 
-### `.claude/skills/*` (17 items) — **nothing hoisted this pass**
+### Round 2: skills rewrites (7 hoisted, 10 still project-scoped)
 
-Every skill had Valor-coupled frontmatter, hardcoded paths, or
-project-specific examples. Broken down:
+After round 1 shipped, the skills were revisited. The ones whose *concept*
+was generic but whose *branding* was Valor-specific got rewritten from
+scratch — same structure, same checklists, no project names or hardcoded
+paths. Rewriting (not copying) was important because the old versions had
+`paths:` frontmatter pinning them to valor2.0 dirs, Valor-specific examples
+in code blocks, and `V2 envelope` / `pytest tests/smoke_*` commands peppered
+throughout.
 
-| Skill | Verdict | Reason |
+Hoisted in round 2:
+
+| Skill | Source | Changes |
 |---|---|---|
-| `agent-patterns/` | Stay | 10+ Valor refs, describes Valor agent structure |
-| `api-conventions/` | Stay | 7 refs, describes V2 envelope / `/ask` / `/health` |
-| `onboarding/` | Stay | 14 refs, literally onboards to Valor |
-| `agent-review.md` | Stay | Reviews Valor agents, imports `agents.{AgentName}` |
-| `end-of-day.md` | Stay (for now) | Hardcodes `agents/ core/` paths |
-| `python-patterns/` | Stay (for now) | Generic concept but paths pin to Valor |
-| `react-patterns/` | Stay (for now) | Uses valor2.0 component examples |
-| `docker-guide/` | Stay (for now) | References valor2.0 compose file |
-| `h-scale.md` | Stay (for now) | Generic framework but tied to Valor canon |
-| `git-guide/` | **Rewrite → hoist** | Title says "Git Guide for Valor 2.0" but content is generic git |
-| `test-writer/` | **Rewrite → hoist** | Concept is generic, `paths: tests/**/*.py` is project-pinned |
-| `code-style/` | **Rewrite → hoist** | Concept is generic, `paths` field pins it to Valor dirs |
-| `error-helper/` | **Rewrite → hoist** | Generic triage, branded as "Error Diagnosis — Valor 2.0" |
-| `perf-audit/` | **Rewrite → hoist** | Generic perf checks, branded as Valor |
-| `explore-codebase/` | **Rewrite → hoist** | Proper frontmatter but mentions `agents, core, configs, tests` dirs |
-| `note/` (actually a slash command) | **Rewrite → hoist as command** | Hardcodes `/workspaces/valor2.0/NOTES.md` |
-| `note-review/` (actually a slash command) | **Rewrite → hoist as command** | Same hardcoded path |
+| `code-style/` | `valor2.0/.claude/skills/code-style/SKILL.md` | Dropped `paths:` field, removed Valor examples, added Go + Rust sections, rewrote Python/TS examples with generic names |
+| `error-helper/` | `valor2.0/.claude/skills/error-helper/SKILL.md` | Stripped MontyCore port numbers, generalized pattern table, added SSL / EACCES rows, added "measurement first" principle |
+| `explore-codebase/` | `valor2.0/.claude/skills/explore-codebase/SKILL.md` | Kept `context: fork` / `agent: Explore`, generalized "agents, core, configs" references to "routing tables, config files, module indices", added disambiguation rule |
+| `git-guide/` | `valor2.0/.claude/skills/git-guide/SKILL.md` | Removed "for Valor 2.0" title, removed Valor branch convention section, added `git reflog` recovery, `merge --abort`, project-agnostic branch naming |
+| `h-scale/` | `valor2.0/.claude/skills/h-scale.md` | Kept the full framework verbatim, dropped the Valor-specific system breakdown ("Portfolio Analytics", "core/finance_db.py"), dropped `docs/m2codex` references, added general "when to use" section |
+| `perf-audit/` | `valor2.0/.claude/skills/perf-audit/SKILL.md` | Removed Valor port/agent refs, added DB-specific section, added "measurement first" principle with tool suggestions |
+| `test-writer/` | `valor2.0/.claude/skills/test-writer/SKILL.md` | Dropped `paths: tests/**/*.py`, replaced V2 envelope template with framework-detection flow, added TypeScript Vitest/Jest example, added layer-choice table |
 
-**Round 2 is not automatic**: each "rewrite → hoist" candidate needs its
-description/paths/examples de-branded before it can be shared across
-projects. That's a judgment call per file, not a copy-paste.
+Also hoisted (as commands, not skills — they were actually slash commands
+living under `skills/`):
 
-Recommended approach:
-1. Copy the file into `Monty-CNS/claude/skills/<name>/SKILL.md`.
-2. Strip `Valor 2.0` from titles and descriptions.
-3. Remove or generalize any `paths:` frontmatter that pins it to one
-   project.
-4. Replace concrete directory references with environment-agnostic
-   phrasing or `$CLAUDE_PROJECT_DIR` where applicable.
-5. If the skill uses `/workspaces/valor2.0/NOTES.md`, switch to
-   `${CLAUDE_PROJECT_DIR:-$HOME}/NOTES.md` or just `$HOME/NOTES.md`
-   depending on whether notes are per-project or global.
+| Command | Source | Changes |
+|---|---|---|
+| `/note` | `valor2.0/.claude/skills/note/SKILL.md` | Path resolution switched from `/workspaces/valor2.0/NOTES.md` to `$NOTES_FILE → ${CLAUDE_PROJECT_DIR:-$PWD}/NOTES.md → $HOME/NOTES.md`, added `#decision` and `#bug` tags, moved to `claude/commands/` with proper frontmatter |
+| `/note-review` | `valor2.0/.claude/skills/note-review/SKILL.md` | Same path resolution change, added "offer to clean up" step, clarified non-destructive archive semantics |
+
+### Round 2: skills still NOT hoisted
+
+These describe Valor-specific architecture and would be noise in other
+projects. They belong in `valor2.0/.claude/skills/`:
+
+| Skill | Reason it stays |
+|---|---|
+| `agent-patterns/` | Describes Valor agent class/port structure, V2 envelope |
+| `api-conventions/` | Describes V2 envelope, `/ask`, `/health`, `/run` endpoints |
+| `onboarding/` | Onboards a new dev to valor2.0 specifically |
+| `agent-review.md` | Reviews Valor agents via `import agents.{Name}` |
+| `python-patterns/` | Python conventions tied to Valor module layout |
+| `react-patterns/` | Mantine + Zustand patterns for valor2.0 console |
+| `docker-guide/` | Walks the valor2.0 `docker-compose.yml` |
+| `end-of-day.md` | Hardcodes `find agents/ core/` paths |
+
+If any of these ever need a generic cousin (e.g. a `python-patterns` that
+isn't Valor-specific), the pattern is the same as round 2: write a fresh
+`claude/skills/<name>/SKILL.md` from scratch, don't copy.
 
 ### `CLAUDE.md`, `AGENTS.md` — stay in valor2.0
 
