@@ -12,6 +12,26 @@
                 ]
             }
         ],
+        "PreToolUse": [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "FILE_PATH=$(echo \"$CLAUDE_TOOL_INPUT\" | python3 -c \"import sys,json; print(json.load(sys.stdin).get('file_path',''))\" 2>/dev/null); PROTECTED='.env .env.local .env.production credentials secrets .pem .key'; for p in $PROTECTED; do case \"$FILE_PATH\" in *\"$p\"*) echo \"BLOCKED: $FILE_PATH is a protected file. Do not edit secrets/credentials directly.\" >&2; exit 2;; esac; done; exit 0"
+                    }
+                ]
+            },
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "CMD=$(echo \"$CLAUDE_TOOL_INPUT\" | python3 -c \"import sys,json; print(json.load(sys.stdin).get('command',''))\" 2>/dev/null); case \"$CMD\" in *'push'*'--force'*|*'push'*'-f'*) echo 'BLOCKED: Force push detected. Use regular push or ask the user first.' >&2; exit 2;; *'reset --hard'*) echo 'BLOCKED: git reset --hard is destructive. Confirm with user first.' >&2; exit 2;; *'rm -rf'*) echo 'BLOCKED: rm -rf is destructive. Confirm with user first.' >&2; exit 2;; *'drop table'*|*'DROP TABLE'*) echo 'BLOCKED: DROP TABLE detected. Confirm with user first.' >&2; exit 2;; esac; exit 0"
+                    }
+                ]
+            }
+        ],
         "Stop": [
             {
                 "matcher": "",
