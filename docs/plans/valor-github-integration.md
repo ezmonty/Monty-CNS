@@ -1302,3 +1302,269 @@ auth works, client is callable.
 - Worklog entry `phase-4-pr-review-bot-complete`
 - `tasks/github_pr_review*.py` and `agents/github_pr_reviewer.py`
   merged
+
+---
+
+### Phase 5 — Observability
+
+**Goal:** Make the system fully observable so operators can detect,
+diagnose, and resolve problems fast. Every request traceable, every
+failure attributable, every trend visible on a dashboard.
+
+**Dependencies:** phase 4 complete (there's something real to
+observe).
+
+**Workstreams (parallel):**
+
+#### Workstream 5.A — Structured logging
+
+- `vgi-5.A.1` Every log line is JSON: `{ts, level, component,
+  correlation_id, delivery_id, event, ...fields}`. Use
+  `structlog` (already likely in Valor's deps) or fall back to
+  stdlib `logging` with a JSON formatter.
+- `vgi-5.A.2` Correlation ID plumbed through the full request:
+  generated on webhook arrival (from `X-GitHub-Delivery` UUID),
+  propagated to the Celery task, propagated to every GitHub API
+  call, propagated to every MontyCore call.
+- `vgi-5.A.3` **Never log**: request bodies, response bodies, JWT
+  values, installation tokens, private keys, webhook secrets,
+  HMAC signatures, or any PR body content. Log field names and
+  types and counts, not values.
+- `vgi-5.A.4` Log retention: structured JSON to local disk,
+  shipped to Loki (or equivalent) for the rack deployment, 90-day
+  retention minimum.
+- `vgi-5.A.5` Unit test that verifies forbidden fields never
+  appear in log output for a set of test payloads.
+
+#### Workstream 5.B — Prometheus metrics
+
+- `vgi-5.B.1` Standard metrics exposed at `/metrics` endpoint:
+  - `valor_github_webhooks_received_total{event, status}` counter
+  - `valor_github_webhook_verify_duration_seconds` histogram
+  - `valor_github_webhook_ack_duration_seconds` histogram
+  - `valor_github_dedupe_hits_total` counter
+  - `valor_github_tasks_enqueued_total{task}` counter
+  - `valor_github_tasks_completed_total{task, outcome}` counter
+  - `valor_github_tasks_duration_seconds{task}` histogram
+  - `valor_github_api_requests_total{method, path_pattern, status_class}` counter
+  - `valor_github_api_duration_seconds{method, path_pattern}` histogram
+  - `valor_github_rate_limit_remaining{installation}` gauge
+  - `valor_github_installation_token_refreshes_total{outcome}` counter
+  - `valor_github_comments_posted_total{repo, action}` counter
+    (action = created | edited)
+- `vgi-5.B.2` Prometheus scrape config committed to
+  `infra/monitoring/prometheus.yml`.
+- `vgi-5.B.3` Grafana dashboard JSON exported to
+  `infra/monitoring/grafana-dashboards/valor-github-integration.json`.
+- `vgi-5.B.4` Unit test the metric emitters produce the expected
+  labels and values.
+
+#### Workstream 5.C — OpenTelemetry traces
+
+- `vgi-5.C.1` Trace ID generated from the correlation ID so logs
+  and traces share the same identifier.
+- `vgi-5.C.2` Trace spans: `webhook.receive` →
+  `webhook.verify` → `webhook.dedupe` → `webhook.dispatch` →
+  `task.enqueue` → `task.execute` → `github.pr.get` →
+  `github.pr.files` → `montycore.ask` → `github.comment.post`.
+- `vgi-5.C.3` Export to whatever the rack runs (Jaeger, Tempo, or
+  just a tail log — pick per Valor's existing observability
+  stack, if any).
+- `vgi-5.C.4` Optional for phase 5 if Valor doesn't have a trace
+  backend yet — can be a phase-9 follow-up. Mark as such in the
+  worklog if skipped.
+
+#### Workstream 5.D — Audit log
+
+- `vgi-5.D.1` Every GitHub-side action the bot takes generates an
+  audit log entry: {ts, actor: "valor-bot", action, target_repo,
+  target_pr, delivery_id, outcome, correlation_id}.
+- `vgi-5.D.2` Written to a dedicated structured log file or a
+  database table. The `actor-model.md` spec says every action
+  must be attributable to a specific actor; this is where that
+  happens for the Valor Bot.
+- `vgi-5.D.3` Retained for 1 year minimum, longer if any
+  regulatory framework applies to the target repo's content.
+- `vgi-5.D.4` Expose a query CLI or endpoint for operators:
+  "show me every action the bot took on this PR" / "every
+  comment posted today" / "every failure in the last hour".
+
+#### Workstream 5.E — Alerting
+
+- `vgi-5.E.1` Alert rules (Prometheus AlertManager format,
+  committed to `infra/monitoring/alerts/valor-github.yml`):
+  - `webhook_5xx_rate > 1%` sustained 2 minutes → page on-call
+  - `installation_token_refresh_failures > 0` in 5 minutes → page
+  - `webhook_ack_p99 > 2s` sustained 5 minutes → page
+  - `rate_limit_remaining < 500` per installation → warn
+  - `task_failure_rate > 5%` sustained 5 minutes → page
+  - `stale_webhook_deliveries` (tasks in backlog > 1 minute) → warn
+- `vgi-5.E.2` Each alert has a runbook link pointing to the
+  corresponding section of `valor-github-integration-runbook.md`.
+- `vgi-5.E.3` Synthetic probe: a cron job opens a test PR on the
+  sandbox repo every 15 minutes and asserts the bot comments
+  within 2 minutes. If it doesn't, page on-call. This is the
+  ultimate "is it working" canary.
+
+**Milestones:**
+
+1. 📝 Every request traceable end-to-end by correlation ID
+2. 📊 Grafana dashboard deployed with all key metrics
+3. 🚨 Alert rules deployed; test alerts fire on fabricated conditions
+4. 📋 Audit log queryable by PR, by delivery, by time range
+5. 🪞 Synthetic probe running; 15-minute cadence; alert wiring verified
+
+**Exit criteria:**
+
+- All 5 milestones achieved
+- `infra/monitoring/` directory populated with config, dashboards, alert rules
+- Worklog entry `phase-5-observability-complete`
+
+---
+
+### Phase 6 — Full QA suite
+
+**Goal:** Consolidate and formalize the test strategy across all
+phases. This phase doesn't add new product features — it hardens
+everything shipped in phases 0–5 and adds the test categories that
+were previously scattered across workstreams.
+
+**Dependencies:** phases 0–5 all have at least partial test coverage
+already (added per-workstream). Phase 6 fills gaps and adds
+categories that don't fit inside a single workstream.
+
+**Workstreams (parallel — most of phase 6 can run alongside phase 5):**
+
+#### Workstream 6.A — Unit test coverage targets
+
+- `vgi-6.A.1` Coverage target per new module:
+  - `core/github_auth.py` — 100%
+  - `core/github_token_cache.py` — 100%
+  - `core/github_client.py` — 95%
+  - `webhooks/github/signature.py` — 100%
+  - `webhooks/github/dedupe.py` — 100%
+  - `webhooks/github/events.py` — 95%
+  - `webhooks/github/router.py` — 95%
+  - `tasks/github_pr_review.py` — 90% (some branches only hit
+    in integration)
+  - `tasks/github_pr_review_formatter.py` — 100%
+  - `agents/github_pr_reviewer.py` — 90%
+- `vgi-6.A.2` Coverage gate in CI: fail the build if any new
+  module drops below its target.
+- `vgi-6.A.3` HTML coverage report generated on every CI run.
+
+#### Workstream 6.B — Integration test suite
+
+- `vgi-6.B.1` Integration tests at `tests/integration/github/`
+  run against a real GitHub test App on a sandbox repo. Require
+  env var `VALOR_GITHUB_INTEGRATION=1` to run, skipped otherwise
+  (so CI doesn't thrash GitHub API limits on every PR).
+- `vgi-6.B.2` VCR cassettes: for every integration test, record
+  a deterministic cassette so the tests can replay offline.
+  Store cassettes at `tests/integration/github/cassettes/`.
+  Redact tokens and signatures from cassettes before commit.
+- `vgi-6.B.3` Cassette refresh procedure documented:
+  `VALOR_GITHUB_RECORD=1 pytest tests/integration/github/` to
+  refresh all cassettes against live GitHub. Requires a valid
+  test App installation.
+- `vgi-6.B.4` CI runs the integration tests against cassettes
+  on every PR, and against live GitHub nightly.
+
+#### Workstream 6.C — End-to-end test environment
+
+- `vgi-6.C.1` Dedicated E2E test script
+  `tests/e2e/github_pr_review.sh` that:
+  - opens a PR on the sandbox repo via `gh pr create`
+  - polls for a bot comment with 120s timeout
+  - asserts the comment structure
+  - closes the PR
+- `vgi-6.C.2` Runs as the last step of phase 4's CI job.
+- `vgi-6.C.3` Schedule: every merge to `main`, every night, and
+  on-demand via a workflow_dispatch trigger.
+
+#### Workstream 6.D — Load testing
+
+- `vgi-6.D.1` Locust (or k6) load test at
+  `tests/load/webhook_load.py` that:
+  - generates synthetic signed webhook deliveries
+  - targets the local webhook endpoint (not real GitHub)
+  - reports p50/p95/p99 ack latency and error rate
+- `vgi-6.D.2` Target: 1000 deliveries/min sustained for 10
+  minutes, p99 ack < 500ms, zero delivery losses (measured by
+  dedupe cache cardinality matching sent count).
+- `vgi-6.D.3` Scheduled: weekly against staging, on-demand
+  against dev, never against production.
+
+#### Workstream 6.E — Security testing
+
+- `vgi-6.E.1` Use the `/adversarial-review` slash command (from
+  CNS) against the full PR that lands the Valor GitHub integration
+  before merging to main. Findings addressed before merge.
+- `vgi-6.E.2` Specific security test cases:
+  - HMAC with wrong secret → 401
+  - HMAC replay (same sig, modified body) → 401
+  - HMAC with valid sig but different delivery ID → 200 (dedupe
+    handles, not sig verification)
+  - Unknown event type → 200 with warning log
+  - Malformed JSON payload → 400
+  - Very large payload (>5 MB) → 413
+  - Slowloris (slow POST) → configurable timeout
+  - Abuse: 100 concurrent requests from same IP with bad sigs
+    → rate limited, alerting fires
+- `vgi-6.E.3` Penetration test by an external reviewer before
+  production rollout (phase 8 gate).
+
+#### Workstream 6.F — Chaos and failure-injection testing
+
+- `vgi-6.F.1` Consolidate all failure-injection tests from phases
+  1–4 into a single suite runnable as
+  `pytest -m failure_injection`.
+- `vgi-6.F.2` Add chaos scenarios:
+  - Redis goes down mid-dedupe
+  - Vault goes down at worker startup
+  - GitHub API returns 500 for all requests for 1 minute
+  - MontyCore times out for 30 seconds
+  - Celery broker disconnects mid-task
+  - Clock skew ±5 minutes
+- `vgi-6.F.3` Each chaos scenario has a named test with expected
+  graceful-degradation behavior documented.
+
+#### Workstream 6.G — Dogfood regression tests
+
+- `vgi-6.G.1` The six specific CNS failures from section 5 each
+  get a named regression test in
+  `tests/dogfood/test_cns_regressions.py`:
+  - `test_real_endpoint_verification_gate` — asserts phase-0 gate
+    enforcement (deployment fails without a verified end-to-end
+    loop)
+  - `test_cross_platform_matrix_enforced` — asserts CI matrix has
+    Linux + Windows jobs
+  - `test_scaffold_files_have_no_comments` — parses every file in
+    `configs/` and asserts no block comments > 5 lines
+  - `test_error_path_coverage` — asserts the failure-injection
+    suite has at least 20 named tests
+  - `test_credential_rotation_invalidates_caches` — rotation
+    procedure test hits real Redis and verifies cache clear
+  - `test_runbook_has_recovery_paths` — parses runbook markdown
+    and asserts every procedure has an "If … fails" subsection
+- `vgi-6.G.2` Dogfood regression tests run on every CI build.
+  Gate blocks merge if any fails.
+
+**Milestones:**
+
+1. 📏 Coverage targets met per module
+2. 📼 VCR cassettes committed, integration tests run offline
+3. 🎬 E2E script runs on merge and nightly
+4. 💪 Load test hits 1000 deliveries/min at target latency
+5. 🔓 Security tests pass; adversarial review clean
+6. 🔥 Chaos + failure injection suite all green
+7. 🐕 All 6 dogfood regression tests pass
+
+**Exit criteria:**
+
+- All 7 milestones achieved
+- CI gate includes every test category from this phase
+- Coverage report committed showing target compliance
+- Worklog entry `phase-6-qa-complete`
+- Security review sign-off from a qualified reviewer (required
+  before phase 8)
