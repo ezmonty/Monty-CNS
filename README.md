@@ -13,12 +13,15 @@ next session on every other machine picks it up.
 
 | Item | State |
 |---|---|
-| One-command install | `curl \| bash` via `install.sh` (clone + bootstrap + secrets + MCP) |
+| Repo visibility | **private** — auth required; install path uses `git clone`, not `curl` |
+| One-line install | `git clone <url> ~/src/Monty-CNS && ~/src/Monty-CNS/install.sh` (HTTPS / SSH / `gh` variants documented) |
+| macOS double-click installer | `Install.command` — copy to Desktop, double-click |
+| `/newmachine` slash command | Inside-session re-sync (bootstrap + secrets + MCP) |
 | Install mechanism | `bootstrap.sh` (idempotent symlinks, merge-mode for dirs) |
 | `SessionStart` hook | ✅ pulls repo, runs bootstrap, loads env, runs drop-ins |
 | `Stop` hook | ✅ git-cleanliness nag |
 | Universal `PreToolUse` hooks | ✅ protects secret files + blocks destructive Bash |
-| Slash commands | **19** — generic workflow commands + notebook capture |
+| Slash commands | **20** — generic workflow + notebook + `/newmachine` |
 | Skills | **9** — generic library, cross-project |
 | MCP servers tracked | **3** — github, filesystem, fetch (+ `install-servers.sh`) |
 | Secrets (sops + age) | ✅ `activate-secrets.sh` one-command installer, tested end-to-end |
@@ -50,7 +53,8 @@ next session on every other machine picks it up.
 ```
 Monty-CNS/
 ├── README.md                          # you are here
-├── install.sh                         # one-command new-machine installer (curl | bash)
+├── install.sh                         # one-command new-machine installer
+├── Install.command                    # macOS double-click wrapper around install.sh
 ├── bootstrap.sh                       # symlink installer — idempotent, merge-mode
 ├── activate-secrets.sh                # one-command sops+age setup, tested end-to-end
 ├── .gitignore                         # blocks secrets, session state, MCP runtime data
@@ -92,38 +96,58 @@ Monty-CNS/
 
 ## Install on a new machine
 
-### One command (after `main` has `install.sh`)
+`Monty-CNS` is a **private repo**, so the install path uses `git clone`
+(authenticated) instead of `curl | bash` (anonymous, which would 404 for
+private repos).
+
+### One-liner (HTTPS + git credential manager)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ezmonty/Monty-CNS/main/install.sh | bash
+git clone https://github.com/ezmonty/Monty-CNS.git ~/src/Monty-CNS && ~/src/Monty-CNS/install.sh
 ```
 
-That's the whole thing. The installer:
+That's the whole thing. The first time you run it on a new Mac, your git
+credential helper pops up to ask for GitHub auth (PAT or browser flow). It
+caches after that, so every subsequent machine is one paste with no
+interaction. After clone, `install.sh` runs and:
 
-1. Checks for `git` (points you at `xcode-select --install` on macOS if missing)
-2. Clones `Monty-CNS` to `~/src/Monty-CNS`
-3. Runs `bootstrap.sh` (symlinks everything under `~/.claude`)
-4. Asks if you want to activate secrets (sops + age) — runs `activate-secrets.sh` if yes
-5. Asks if you want to install tracked MCP servers — runs `install-servers.sh` if yes
-6. Reports next steps
+1. Detects the repo is already there → skips clone
+2. Runs `bootstrap.sh` (symlinks under `~/.claude`)
+3. Asks if you want to activate secrets (sops + age)
+4. Asks if you want to install tracked MCP servers
+5. Reports next steps
 
-Prefer to review before running? Same script, just save it first:
+### One-liner (SSH, if you have a key set up)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ezmonty/Monty-CNS/main/install.sh -o /tmp/install.sh
-less /tmp/install.sh       # read what it does
-bash /tmp/install.sh
+git clone git@github.com:ezmonty/Monty-CNS.git ~/src/Monty-CNS && ~/src/Monty-CNS/install.sh
 ```
 
-**Environment overrides** for automation:
+Same flow, faster auth (no credential prompt at all if your SSH agent has
+the key loaded).
+
+### One-liner (`gh` CLI, easiest browser auth)
+
+If you'd rather not deal with PATs or SSH keys, use the GitHub CLI:
 
 ```bash
-MONTY_CNS_YES=1             # unattended, assume yes to every prompt
-MONTY_CNS_NO_SECRETS=1      # skip the secrets phase
-MONTY_CNS_NO_MCP=1          # skip MCP server install
-MONTY_CNS_DIR=/path         # clone somewhere other than ~/src/Monty-CNS
-MONTY_CNS_BRANCH=some-branch  # check out a non-default branch
+brew install gh                                # one-time, only if you don't have it
+gh auth login                                  # one-time, browser-based
+gh repo clone ezmonty/Monty-CNS ~/src/Monty-CNS && ~/src/Monty-CNS/install.sh
 ```
+
+`gh auth login` does a browser handshake — no token to paste, no SSH key
+to generate. After it's done once on a machine, it's cached forever.
+
+### Codespaces / cloud dev environments
+
+Codespaces have github auth pre-configured. Just paste:
+
+```bash
+git clone https://github.com/ezmonty/Monty-CNS.git ~/src/Monty-CNS && ~/src/Monty-CNS/install.sh
+```
+
+No credential prompts, no setup.
 
 ### Manual — individual phases
 
@@ -137,6 +161,17 @@ cd ~/src/Monty-CNS
 ./activate-secrets.sh             # (2) secrets
 ~/.claude/mcp/install-servers.sh  # (3) MCP servers
 ```
+
+### Prerequisites
+
+| Tool | Why | Get it |
+|---|---|---|
+| `git` | clone + push | macOS: `xcode-select --install` · Linux: package manager · pre-installed in codespaces |
+| (one of) HTTPS PAT, SSH key, or `gh auth` | auth to private repo | github.com/settings/tokens, or `ssh-keygen + add to github`, or `brew install gh && gh auth login` |
+| `bash` 4+ recommended (3.2 works) | run installer scripts | macOS ships 3.2; install 4+ via `brew install bash` if you want (not required) |
+
+`install.sh` itself will tell you about anything else missing
+(`sops`/`age`/`jq`/`claude`) when you reach the relevant phase.
 
 **Preview any step without touching the machine:**
 

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Monty-CNS one-line new-machine installer.
 #
-# Run from anywhere:
-#   curl -fsSL https://raw.githubusercontent.com/ezmonty/Monty-CNS/main/install.sh | bash
+# Monty-CNS is a PRIVATE repo. Use git clone (authenticated), not curl|bash.
 #
-# Or review first (recommended — curl|bash is a security smell):
-#   curl -fsSL https://raw.githubusercontent.com/ezmonty/Monty-CNS/main/install.sh -o /tmp/monty-cns-install.sh
-#   less /tmp/monty-cns-install.sh    # read what it's going to do
-#   bash /tmp/monty-cns-install.sh
+# HTTPS one-liner (uses your git credential manager — first run prompts):
+#   git clone https://github.com/ezmonty/Monty-CNS.git ~/src/Monty-CNS && ~/src/Monty-CNS/install.sh
 #
-# Or fully manual — clone and run locally:
-#   git clone https://github.com/ezmonty/Monty-CNS.git ~/src/Monty-CNS
-#   ~/src/Monty-CNS/install.sh
+# SSH one-liner (uses your ssh-agent — silent if key is loaded):
+#   git clone git@github.com:ezmonty/Monty-CNS.git ~/src/Monty-CNS && ~/src/Monty-CNS/install.sh
+#
+# gh CLI one-liner (browser auth — easiest if you don't have a PAT or SSH key):
+#   brew install gh && gh auth login   # one-time
+#   gh repo clone ezmonty/Monty-CNS ~/src/Monty-CNS && ~/src/Monty-CNS/install.sh
 #
 # Environment overrides (optional):
 #   MONTY_CNS_DIR=/path/to/clone      (default: $HOME/src/Monty-CNS)
