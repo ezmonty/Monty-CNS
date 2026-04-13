@@ -133,6 +133,60 @@ if ! command -v curl >/dev/null 2>&1; then
   warn "curl not found — the sops install step may fail on Debian/Ubuntu"
 fi
 
+# Optional — offer to install Claude Code itself if missing. MCP phase needs
+# the `claude` CLI; without it, that phase gets skipped with a warning. Doing
+# this in preflight means a fresh machine gets a truly one-command setup.
+if ! command -v claude >/dev/null 2>&1; then
+  say
+  info "Claude Code CLI not found on PATH"
+  info "  It's needed for the MCP server install phase (and, y'know, to use Claude Code)."
+  case "$OS" in
+    macos)
+      if command -v brew >/dev/null 2>&1; then
+        info "  Install options:"
+        info "    A. $(bold "brew install --cask claude-code")   (Homebrew, managed updates)"
+        info "    B. $(bold "curl -fsSL https://claude.ai/install.sh | bash")   (Anthropic's official installer)"
+        if ask_yes_no "  Install Claude Code with Homebrew now?" Y; then
+          brew install --cask claude-code
+          hash -r 2>/dev/null || true
+        fi
+      else
+        info "  Anthropic's official installer:"
+        info "    $(bold "curl -fsSL https://claude.ai/install.sh | bash")"
+        if ask_yes_no "  Run the Anthropic installer now?" Y; then
+          curl -fsSL https://claude.ai/install.sh | bash
+          hash -r 2>/dev/null || true
+        fi
+      fi
+      ;;
+    linux)
+      info "  Anthropic's official installer (works on Linux + WSL):"
+      info "    $(bold "curl -fsSL https://claude.ai/install.sh | bash")"
+      if ask_yes_no "  Run the Anthropic installer now?" Y; then
+        curl -fsSL https://claude.ai/install.sh | bash
+        hash -r 2>/dev/null || true
+      fi
+      ;;
+    *)
+      info "  Install manually for your OS, then re-run this script:"
+      info "    macOS / Linux / WSL: curl -fsSL https://claude.ai/install.sh | bash"
+      info "    Windows PowerShell:  irm https://claude.ai/install.ps1 | iex"
+      info "    Windows WinGet:      winget install Anthropic.ClaudeCode"
+      ;;
+  esac
+
+  # Re-check after potential install
+  if command -v claude >/dev/null 2>&1; then
+    ok "claude: $(claude --version 2>&1 | head -1)"
+    info "  Log in with: $(bold "claude") — follow the browser OAuth flow"
+  else
+    warn "claude not installed — MCP server phase will be skipped"
+    info "  You can install later: curl -fsSL https://claude.ai/install.sh | bash"
+  fi
+else
+  ok "claude: $(claude --version 2>&1 | head -1)"
+fi
+
 # ---------- phase 2: clone or update ----------
 
 step "Phase 2 — clone or update repo"

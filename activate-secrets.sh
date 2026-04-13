@@ -325,11 +325,50 @@ install_tools() {
       fi
       ;;
     *)
-      err "automatic install not supported for OS '$OS'"
-      info "install manually and re-run:"
-      info "  sops: https://github.com/getsops/sops/releases"
-      info "  age:  https://github.com/FiloSottile/age/releases"
-      return 1
+      # Unknown Linux / other POSIX — fall back to direct binary download.
+      say
+      info "No known package manager for OS='$OS'. Falling back to direct download."
+      if ! ask_yes_no "  Download sops + age binaries from GitHub releases? (needs sudo)" Y; then
+        err "can't continue without sops + age"
+        return 1
+      fi
+
+      local arch kernel
+      kernel="$(uname -s | tr '[:upper:]' '[:lower:]')"
+      case "$(uname -m)" in
+        x86_64)         arch=amd64 ;;
+        aarch64|arm64)  arch=arm64 ;;
+        *)              err "unsupported arch: $(uname -m)"; return 1 ;;
+      esac
+      # kernel is "linux" on Linux, "darwin" on macOS, MINGW*/MSYS* on Git Bash (Windows).
+      case "$kernel" in
+        linux|darwin) ;;
+        *) err "unsupported kernel for direct install: $kernel"; return 1 ;;
+      esac
+
+      sudo mkdir -p /usr/local/bin
+
+      info "downloading sops ($kernel-$arch)..."
+      local sops_url="https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.$kernel.$arch"
+      if ! curl -fsSLo /tmp/sops "$sops_url"; then
+        err "sops download failed from $sops_url"
+        return 1
+      fi
+      sudo install -m 0755 /tmp/sops /usr/local/bin/sops
+      rm -f /tmp/sops
+      ok "installed /usr/local/bin/sops"
+
+      info "downloading age ($kernel-$arch)..."
+      local age_url="https://github.com/FiloSottile/age/releases/download/v1.2.0/age-v1.2.0-$kernel-$arch.tar.gz"
+      if ! curl -fsSLo /tmp/age.tgz "$age_url"; then
+        err "age download failed from $age_url"
+        return 1
+      fi
+      tar -xzf /tmp/age.tgz -C /tmp
+      sudo install -m 0755 /tmp/age/age        /usr/local/bin/age
+      sudo install -m 0755 /tmp/age/age-keygen /usr/local/bin/age-keygen
+      rm -rf /tmp/age /tmp/age.tgz
+      ok "installed /usr/local/bin/age + /usr/local/bin/age-keygen"
       ;;
   esac
 
