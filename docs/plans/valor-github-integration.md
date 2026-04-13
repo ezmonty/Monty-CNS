@@ -1568,3 +1568,318 @@ categories that don't fit inside a single workstream.
 - Worklog entry `phase-6-qa-complete`
 - Security review sign-off from a qualified reviewer (required
   before phase 8)
+
+---
+
+### Phase 7 — Staging deployment
+
+**Goal:** Run the full system in a staging environment on the
+rack, isolated from production, with synthetic traffic that
+mirrors expected production load. Prove the system is
+deployable, restartable, upgradeable, and observable under real
+infrastructure conditions before it touches any Remedy repos.
+
+**Dependencies:** phases 0–6 complete. All tests green. Security
+review sign-off (phase 6.E.3) obtained.
+
+**Workstreams (parallel):**
+
+#### Workstream 7.A — Docker image + build pipeline
+
+- `vgi-7.A.1` Extend Valor's existing `Dockerfile` (or add a
+  target) so the GitHub webhook receiver is a runnable image.
+  Do NOT create a new Dockerfile — match Valor's existing
+  multi-service container convention.
+- `vgi-7.A.2` Image entrypoint runs the FastAPI app under
+  `uvicorn` with appropriate worker count from env vars.
+- `vgi-7.A.3` Celery worker uses the same image with a different
+  entrypoint (`celery -A tasks.github_pr_review worker`).
+- `vgi-7.A.4` Image health check endpoint `/healthz` returns
+  200 when: FastAPI boots, Redis reachable, Vault reachable,
+  GitHub API reachable (simple `/zen` call).
+- `vgi-7.A.5` CI build publishes the image to whatever registry
+  Valor uses (self-hosted Harbor on the rack, or GitHub Container
+  Registry, matching existing infra).
+
+#### Workstream 7.B — Staging environment
+
+- `vgi-7.B.1` Dedicated staging namespace/VM on the rack,
+  **physically isolated** from production (separate Redis,
+  separate Vault mount, separate logs). No shared state with
+  prod.
+- `vgi-7.B.2` Staging Vault holds a staging App private key
+  (a different App from production — `valor-bot-staging`).
+- `vgi-7.B.3` Staging Tailscale webhook URL
+  `webhook.valor-staging.tail-xxxx.ts.net` points at the
+  staging webhook endpoint.
+- `vgi-7.B.4` `docker-compose.staging.yml` (or equivalent)
+  committed to `infra/staging/` defines the full staging stack:
+  webhook receiver, Celery workers (×2), Redis, Prometheus,
+  Grafana, Vault agent.
+- `vgi-7.B.5` Smoke deploy: `docker-compose -f infra/staging/docker-compose.staging.yml up -d`,
+  verify `/healthz` returns 200 on all services.
+
+#### Workstream 7.C — Staging App installation
+
+- `vgi-7.C.1` Register a second GitHub App `valor-bot-staging`
+  under the Remedy Reconstruction org, identical permissions to
+  the production App but different private key.
+- `vgi-7.C.2` Install `valor-bot-staging` on a dedicated staging
+  test repo `remedy/valor-staging-sandbox`.
+- `vgi-7.C.3` Webhook URL points at the staging Tailscale
+  endpoint.
+- `vgi-7.C.4` Populate staging Vault with the staging App's
+  credentials.
+
+#### Workstream 7.D — 48-hour soak test
+
+- `vgi-7.D.1` Synthetic load generator runs against the staging
+  webhook endpoint for 48 continuous hours:
+  - 10 deliveries/min baseline (realistic PR volume for a small org)
+  - 1 burst/hour of 100 deliveries in 30 seconds
+  - 1 deliberate failure injection every 4 hours (chaos scenario
+    from 6.F.2)
+- `vgi-7.D.2` Success criteria:
+  - 0 dropped deliveries (dedupe cardinality matches sent count)
+  - p99 ack < 500ms sustained
+  - 0 unhandled exceptions in logs
+  - All alerts fire as expected on injected failures
+  - Grafana dashboard shows healthy trends
+- `vgi-7.D.3` Restart test: mid-soak, restart one Celery worker.
+  Verify zero task loss (in-flight tasks redriven by Celery
+  broker).
+- `vgi-7.D.4` Upgrade test: mid-soak, deploy a new image
+  version with a trivial change. Verify zero dropped deliveries
+  during rollover.
+- `vgi-7.D.5` Rotation test: mid-soak, rotate the App private
+  key following the runbook procedure. Verify cache
+  invalidation works, zero auth failures during rotation.
+
+**Milestones:**
+
+1. 📦 Image builds and publishes via CI
+2. 🧪 Staging stack boots cleanly via docker-compose
+3. 🪪 Staging App installed on sandbox repo, webhook URL live
+4. ⏱️ 48-hour soak completed without incidents
+5. 🔄 Restart, upgrade, and rotation tests all pass mid-soak
+
+**Exit criteria:**
+
+- All 5 milestones achieved
+- Soak test report attached to worklog entry
+- No unresolved incidents from the soak period
+- Worklog entry `phase-7-staging-complete`
+
+---
+
+### Phase 8 — Production rollout
+
+**Goal:** Ship the integration to Remedy Reconstruction's real
+repos, behind a feature flag, with gradual rollout and explicit
+rollback checkpoints.
+
+**Dependencies:** phase 7 complete. Staging soak clean. Remedy
+engineering leadership has approved the rollout window.
+
+**Workstreams (mostly sequential within this phase):**
+
+#### Workstream 8.A — Production Vault + App
+
+- `vgi-8.A.1` Production Vault entries populated with the
+  production App's private key (the one generated in phase 0.A).
+- `vgi-8.A.2` Production Tailscale webhook URL confirmed live.
+- `vgi-8.A.3` Production App webhook URL updated from the phase-0
+  placeholder to the real Tailscale endpoint.
+- `vgi-8.A.4` Production Vault has 3 unseal keys stored per the
+  compromise playbook — at least one offline.
+
+#### Workstream 8.B — Feature flag
+
+- `vgi-8.B.1` Add a feature flag
+  `GITHUB_INTEGRATION_ENABLED_REPOS` (comma-separated repo list)
+  read from `core/config.py`.
+- `vgi-8.B.2` The webhook router checks: if the delivery's repo
+  is NOT in the enabled list, return 200 but skip task enqueue.
+  This lets us install the App on many repos but only act on a
+  subset.
+- `vgi-8.B.3` Default value: empty list (install but do nothing,
+  fail-closed).
+- `vgi-8.B.4` Config change is a config-only redeploy — no code
+  change.
+
+#### Workstream 8.C — Canary rollout
+
+- `vgi-8.C.1` **Step 1:** Install production App on ONE
+  non-critical Remedy repo (e.g., a docs repo or internal
+  tooling repo). Flag set to `[that-one-repo]`. Monitor for 24
+  hours.
+- `vgi-8.C.2` **Step 2:** Expand flag to 3 more repos. Monitor
+  for 48 hours.
+- `vgi-8.C.3` **Step 3:** Expand flag to ~10% of Remedy's repos.
+  Monitor for 72 hours.
+- `vgi-8.C.4` **Step 4:** Expand flag to 100% of Remedy's active
+  repos. Monitor indefinitely.
+- `vgi-8.C.5` Each step has a GO/NO-GO checkpoint: operator
+  reviews dashboard, audit log, and any tickets filed. Any
+  regression pauses the rollout until resolved.
+
+#### Workstream 8.D — Rollback procedure
+
+- `vgi-8.D.1` Documented in the runbook (phase 9) with exact
+  commands:
+  1. Set `GITHUB_INTEGRATION_ENABLED_REPOS=""` (empty) in
+     production config
+  2. Redeploy the config — no new image needed
+  3. Observe: no new tasks enqueued, in-flight tasks complete
+     or error out gracefully
+  4. Optionally uninstall the App entirely if the failure is
+     unresolvable
+- `vgi-8.D.2` Rollback drill: during canary step 2, deliberately
+  trigger a rollback, measure time-to-stop (target: under 2
+  minutes from decision to "no new comments posted"), then roll
+  forward again.
+- `vgi-8.D.3` Rollback criteria explicitly defined:
+  - Any P0 alert firing for > 5 minutes → roll back
+  - Any security incident → roll back immediately
+  - Any regression in PR review quality that Remedy engineering
+    escalates → roll back and investigate
+
+#### Workstream 8.E — Remedy handoff
+
+- `vgi-8.E.1` Remedy engineering contact has access to the
+  Grafana dashboard (read-only user on the rack via Tailscale).
+- `vgi-8.E.2` Runbook shared with Remedy ops: they know how to
+  escalate if the bot misbehaves.
+- `vgi-8.E.3` Channel for Remedy → Valor issue reports
+  (dedicated Slack, email, or ticket queue).
+- `vgi-8.E.4` Agreed SLO targets documented between Valor and
+  Remedy: p99 comment post < 3 min, 99.9% availability,
+  response to P0 within 30 min.
+
+**Milestones:**
+
+1. 🔐 Production Vault entries verified
+2. 🎚️ Feature flag controls which repos the bot acts on
+3. 🐣 Canary 1-repo stage complete, 24h clean
+4. 📈 Canary expansion to 100% complete, all checkpoints green
+5. ⏪ Rollback drill performed and timed (< 2 min)
+6. 🤝 Remedy has dashboard access, runbook, and escalation channel
+
+**Exit criteria:**
+
+- All 6 milestones achieved
+- Zero unresolved P0 or P1 incidents during rollout
+- Remedy engineering lead signs off
+- Worklog entry `phase-8-production-complete`
+- First real Remedy PR review comment posted by Valor Bot ✨
+
+---
+
+### Phase 9 — Operations runbook
+
+**Goal:** Make the system operable by someone other than the
+people who built it. This phase produces the runbook, trains
+the on-call rotation, and schedules the recurring drills that
+keep the muscle memory alive.
+
+**Dependencies:** phase 8 complete. Real production traffic
+flowing. The runbook has been partially drafted throughout
+phases 0–8 as each piece shipped — phase 9 consolidates and
+validates it.
+
+**Workstreams (parallel):**
+
+#### Workstream 9.A — Runbook consolidation
+
+- `vgi-9.A.1` `docs/plans/valor-github-integration-runbook.md`
+  is the single source of truth. Sections:
+  - System overview (diagram from 4.1)
+  - Deploy procedure (from 7.A, 7.B, 8.A)
+  - Rollback procedure (from 8.D)
+  - Rotation procedures (App private key, webhook secret,
+    Vault unseal keys)
+  - Common incidents with symptom → cause → fix paths per
+    dogfood lesson 5.6
+  - Escalation paths
+  - On-call rotation schedule
+- `vgi-9.A.2` Every procedure has an "If … fails" subsection
+  (dogfood lesson 5.6 — runbook gate test checks this).
+- `vgi-9.A.3` Peer review: at least two people who did not
+  write the runbook perform a dry run of each procedure from
+  the runbook alone. Anything they can't do without asking
+  questions is a gap that gets fixed.
+
+#### Workstream 9.B — On-call + escalation
+
+- `vgi-9.B.1` Define on-call rotation: who is paged for P0, P1,
+  P2 alerts. Initial rotation likely the Valor engineer(s).
+- `vgi-9.B.2` Escalation matrix: P0 → page primary → 15 min →
+  page secondary → 30 min → page Remedy ops contact.
+- `vgi-9.B.3` Alerting plumbed to a paging service
+  (PagerDuty, Opsgenie, or a lightweight self-hosted option
+  that integrates with Prometheus AlertManager).
+- `vgi-9.B.4` On-call handoff protocol: weekly, documented in
+  the runbook, includes a "known issues" carryover.
+
+#### Workstream 9.C — SLOs and error budgets
+
+- `vgi-9.C.1` Defined SLOs:
+  - **Availability:** 99.9% (30 days rolling) — webhook ack
+    success rate
+  - **Latency:** p99 comment-posted < 3 min from PR opened
+  - **Correctness:** 0 false-delete or duplicate comments
+    (dedupe idempotency)
+  - **Security:** 0 successful unauthorized API calls
+    (signature verification rejects 100% of invalid
+    deliveries)
+- `vgi-9.C.2` Error budgets computed monthly. If availability
+  budget is exhausted, a postmortem is required before further
+  feature work.
+- `vgi-9.C.3` SLO dashboard is part of the Grafana export from
+  phase 5.
+
+#### Workstream 9.D — Quarterly drills
+
+- `vgi-9.D.1` Calendar recurrence every 3 months: rotation drill
+  (practice App private key rotation without downtime per 7.D.5
+  procedure).
+- `vgi-9.D.2` Calendar recurrence every 3 months: compromise
+  drill (practice a full rotation of all secrets as if the rack
+  was compromised, timed for learning).
+- `vgi-9.D.3` Calendar recurrence every 6 months: disaster
+  recovery drill (stand up the full staging stack from scratch
+  from the runbook alone — validates the install procedure is
+  complete).
+- `vgi-9.D.4` Each drill has a post-drill review that may add
+  entries to section 5 of this plan (future dogfood lessons).
+
+#### Workstream 9.E — Post-incident review template
+
+- `vgi-9.E.1` Template in `docs/plans/valor-github-integration-postmortem-template.md`
+  with the 5-whys structure, timeline reconstruction, action
+  items, and linked artifacts (logs, traces, dashboards).
+- `vgi-9.E.2` Every P0 and P1 incident gets a written postmortem
+  within 5 business days.
+- `vgi-9.E.3` Postmortems are blameless — focus on the system
+  failure, not the individual. The goal is to make the system
+  more resilient, not to punish.
+- `vgi-9.E.4` Action items from postmortems become tracked
+  tasks in the worklog under a new workstream in a future
+  phase.
+
+**Milestones:**
+
+1. 📖 Runbook peer-reviewed with successful dry runs
+2. 📟 On-call rotation and escalation live; test page fires correctly
+3. 🎯 SLOs defined, dashboard live, error budget computed
+4. 📅 Quarterly drill schedule in calendar with first drill dated
+5. 📝 Postmortem template committed, used on first real incident
+
+**Exit criteria:**
+
+- All 5 milestones achieved
+- Runbook in version control with peer-review sign-off
+- On-call rotation actively paging for test alerts
+- Worklog entry `phase-9-operations-complete`
+- **Plan is done** — ongoing operations handled per runbook and
+  drill cadence
