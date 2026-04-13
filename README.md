@@ -91,7 +91,15 @@ Monty-CNS/
     ├── self-hosting.md                # plain SSH git / Forgejo / Tailscale options
     ├── secrets.md                     # secrets strategy (the "why")
     ├── secrets-setup.md               # sops + age walkthrough (the "how")
-    └── migration-valor2.md            # audit log of what moved from valor2.0 and why
+    ├── migration-valor2.md            # audit log of what moved from valor2.0 and why
+    └── security/                      # security posture — threat model, playbook, classification
+        ├── README.md                  # index
+        ├── threat-model.md            # what CNS protects, what it doesn't
+        ├── classification.md          # Public / Internal / Confidential / Restricted
+        ├── where-data-lives.md        # decision tree: git, secret manager, or DB
+        ├── disk-encryption.md         # FileVault / BitLocker / LUKS — mandatory
+        ├── compromise-playbook.md     # incident response checklist
+        └── valor-scope.md             # why CNS is NOT for Valor's customer data
 ```
 
 ## Install on a new machine
