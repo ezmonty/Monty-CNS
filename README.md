@@ -13,6 +13,7 @@ next session on every other machine picks it up.
 
 | Item | State |
 |---|---|
+| One-command install | `curl \| bash` via `install.sh` (clone + bootstrap + secrets + MCP) |
 | Install mechanism | `bootstrap.sh` (idempotent symlinks, merge-mode for dirs) |
 | `SessionStart` hook | ✅ pulls repo, runs bootstrap, loads env, runs drop-ins |
 | `Stop` hook | ✅ git-cleanliness nag |
@@ -49,6 +50,7 @@ next session on every other machine picks it up.
 ```
 Monty-CNS/
 ├── README.md                          # you are here
+├── install.sh                         # one-command new-machine installer (curl | bash)
 ├── bootstrap.sh                       # symlink installer — idempotent, merge-mode
 ├── activate-secrets.sh                # one-command sops+age setup, tested end-to-end
 ├── .gitignore                         # blocks secrets, session state, MCP runtime data
@@ -90,31 +92,57 @@ Monty-CNS/
 
 ## Install on a new machine
 
-Three commands, in order, get you from zero to a fully-wired machine:
+### One command (after `main` has `install.sh`)
 
 ```bash
-# 1. Clone + symlink the dotfiles
-git clone <your-remote>:ezmonty/Monty-CNS.git ~/src/Monty-CNS
-cd ~/src/Monty-CNS
-./bootstrap.sh                        # create the symlinks under ~/.claude
-
-# 2. Activate secrets (one-command sops + age install + key + scaffold + test)
-./activate-secrets.sh                 # interactive; --yes for unattended
-# (skip this on machines where you don't want secrets synced)
-
-# 3. Install the tracked MCP servers
-~/.claude/mcp/install-servers.sh      # idempotent, reads claude/mcp/servers/*.json
+curl -fsSL https://raw.githubusercontent.com/ezmonty/Monty-CNS/main/install.sh | bash
 ```
 
-Run them in that order — `bootstrap.sh` sets up the symlinks that the
-other two need, `activate-secrets.sh` gets the env vars flowing, then the
-MCP servers can launch with their secrets already in place.
+That's the whole thing. The installer:
 
-**Preview any of them first:**
+1. Checks for `git` (points you at `xcode-select --install` on macOS if missing)
+2. Clones `Monty-CNS` to `~/src/Monty-CNS`
+3. Runs `bootstrap.sh` (symlinks everything under `~/.claude`)
+4. Asks if you want to activate secrets (sops + age) — runs `activate-secrets.sh` if yes
+5. Asks if you want to install tracked MCP servers — runs `install-servers.sh` if yes
+6. Reports next steps
+
+Prefer to review before running? Same script, just save it first:
 
 ```bash
-./bootstrap.sh --dry-run              # show what symlinks would change
-./activate-secrets.sh --status        # report current secrets state
+curl -fsSL https://raw.githubusercontent.com/ezmonty/Monty-CNS/main/install.sh -o /tmp/install.sh
+less /tmp/install.sh       # read what it does
+bash /tmp/install.sh
+```
+
+**Environment overrides** for automation:
+
+```bash
+MONTY_CNS_YES=1             # unattended, assume yes to every prompt
+MONTY_CNS_NO_SECRETS=1      # skip the secrets phase
+MONTY_CNS_NO_MCP=1          # skip MCP server install
+MONTY_CNS_DIR=/path         # clone somewhere other than ~/src/Monty-CNS
+MONTY_CNS_BRANCH=some-branch  # check out a non-default branch
+```
+
+### Manual — individual phases
+
+Each phase script is idempotent and can be run on its own if the one-liner
+aborted partway, or you just want to rerun one step:
+
+```bash
+git clone https://github.com/ezmonty/Monty-CNS.git ~/src/Monty-CNS
+cd ~/src/Monty-CNS
+./bootstrap.sh                    # (1) symlinks
+./activate-secrets.sh             # (2) secrets
+~/.claude/mcp/install-servers.sh  # (3) MCP servers
+```
+
+**Preview any step without touching the machine:**
+
+```bash
+./bootstrap.sh --dry-run
+./activate-secrets.sh --status
 ~/.claude/mcp/install-servers.sh --dry-run
 ~/.claude/mcp/install-servers.sh --list
 ```
