@@ -1,0 +1,36 @@
+# --- Secrets (NEVER commit) ---
+.credentials.json
+**/.credentials.json
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# --- Claude runtime / machine-local state ---
+# These live under ~/.claude on each host and should stay local.
+claude/projects/
+claude/sessions/
+claude/session-env/
+claude/todos/
+claude/statsig/
+claude/shell-snapshots/
+claude/backups/
+claude/.claude.json
+claude/.claude.json.backup
+claude/ide/
+claude/logs/
+
+# --- MCP server local state ---
+claude/mcp/**/state/
+claude/mcp/**/cache/
+claude/mcp/**/*.sqlite*
+claude/mcp/**/node_modules/
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
