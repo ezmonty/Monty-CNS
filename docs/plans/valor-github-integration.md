@@ -523,28 +523,28 @@ that mental model and asks "what breaks?" The review is cheap (one
 subagent pass, ~15 minutes) relative to the cost of shipping any one
 of the findings to production undetected.
 
-**Plan decision (section 6 — coordination, and section 10 —
-QA gates):** `/adversarial-review` is not a closeout-only step. It
-runs **during plan authoring**, before phase 0 kickoff, and at the
-end of every phase. Specifically:
+**Plan decision (section 6 — coordination rules, and phase exit
+criteria throughout §7):** `/adversarial-review` is not a
+closeout-only step. It runs **during plan authoring**, before phase 0
+kickoff, and at the end of every phase. Specifically:
 
 - **Plan-authoring gate:** any plan document labeled "thesis-grade"
   or feeding into multi-phase work MUST pass an adversarial review
   pass before a single line of implementation code is written. This
   includes the Valor GitHub integration plan itself — the review
   that surfaced C1–C5 happened after the plan was drafted; the five
-  critical amendments (see §14 changelog entry 2026-04-16) are the
-  result. Going forward, the review runs BEFORE the plan is
-  declared H3+.
+  critical amendments were committed on 2026-04-16 (see `git log
+  --grep="C1-C5"` for the exact commit). Going forward, the review
+  runs BEFORE the plan is declared H3+.
 - **Per-phase gate:** phase exit criteria include an adversarial
   review of the phase's worklog entries and deliverables. Critical
   findings block the next phase; medium/low findings get added to
   the phase worklog's "known issues" and triaged in the next
   planning session.
 - **Author attestation is not enough:** the author's H-scale
-  self-rating (§12) does not count as validation. A separate
-  reviewer — human or adversarial-review subagent — must sign off
-  on the rating before it enters the plan.
+  self-rating does not count as validation. A separate reviewer —
+  human or adversarial-review subagent — must sign off on the
+  rating before it enters the plan.
 
 ---
 
@@ -1536,6 +1536,11 @@ observe).
   - `rate_limit_remaining < 500` per installation → warn
   - `task_failure_rate > 5%` sustained 5 minutes → page
   - `stale_webhook_deliveries` (tasks in backlog > 1 minute) → warn
+  - **(C3 amendment) `redis_unreachable` for > 30s → page on-call
+    at P0.** The dedupe layer fails CLOSED on Redis outage
+    (returns HTTP 503), so Redis down = Valor stops processing
+    webhooks entirely. Page immediately, do not wait for the
+    `webhook_5xx_rate` alert to catch it secondarily.
 - `vgi-5.E.2` Each alert has a runbook link pointing to the
   corresponding section of `valor-github-integration-runbook.md`.
 - `vgi-5.E.3` Synthetic probe: a cron job opens a test PR on the
@@ -2235,7 +2240,7 @@ columns are test types, cells say which workstream owns it.
 | 1 Auth | 1.A.3, 1.C.3 | 1.B.5, 1.C.5 | — | 1.D.4 | 1.A.4, 1.B.3 | — | — | — | 6.G (deferred) |
 | 2 Client | 2.A.4, 2.B.5, 2.C.3 | 2 mandatory | — | — | 2.B, 2.C | — | 2.D chaos stress | 2 stress | — |
 | 3 Webhook | 3.A.5, 3.B.5, 3.C.5 | 3 roundtrip | — | 3.D.5 | all workstreams | 3.A.3 | 3.D.4 load | 3 chaos | — |
-| 4 PR bot | all workstreams | 4 e2e | manual PR | 4.F.4 | 4.C.5, 4.E.5 | 4 fork-PR test | 4 perf | — | — |
+| 4 PR bot | all workstreams | 4 e2e | manual PR | 4.F.4 | 4.C.5, 4.E.8 | 4 fork-PR test | 4 perf | — | — |
 | 5 Observability | 5.A.5, 5.B.4 | — | — | — | — | — | — | — | — |
 | 6 QA | 6.A gate | 6.B cassettes | 6.C script | (via others) | 6.F suite | 6.E pentest | 6.D load | 6.F chaos | 6.G (all 6) |
 | 7 Staging | — | — | 7.D soak | 7.B | 7.D soak chaos | — | 7.D soak | 7.D soak | — |
