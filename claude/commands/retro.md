@@ -1,0 +1,46 @@
+---
+description: End-of-session retrospective — extract learnings and write structured vault notes.
+---
+
+# /retro — Session retrospective
+
+Synthesize what happened this session into a structured retrospective note.
+
+## Steps
+
+### 1. Gather session data
+
+- Run `git log --oneline` for commits this session (since last CHECKPOINT.md timestamp, or last 2 hours).
+- Read `CHECKPOINT.md` if it exists.
+- Read any worklog entries from this session.
+- Count files changed, tests run, errors encountered.
+
+### 2. Synthesize into three sections
+
+- **Accomplished:** bullet list of what was done (derived from commits).
+- **Learned:** generalizable insights discovered. Call `/learn` for each one.
+- **Next time:** what should be different, what's unfinished, what was harder than expected.
+
+### 3. Write retrospective note
+
+- If Monty-Ledger MCP server is available, use `create_inbox_note` tool.
+- Otherwise write to `~/src/Monty-Ledger/00_Inbox/Retro - <date>.md` (or `monty-ledger/00_Inbox/` if in-repo).
+- Frontmatter:
+
+```yaml
+---
+type: retro
+status: review
+origin_type: ai-proposed
+confidence: 3
+access: private
+truth_layer: working
+tags: [retro, <project>]
+---
+```
+
+- Body contains the three sections from step 2, plus session stats (files changed, commits, duration).
+
+### 4. Confirm
+
+Print a summary: accomplishments count, learnings captured, and where the retro was saved.

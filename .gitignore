@@ -3,6 +3,10 @@
 **/.credentials.json
 *.pem
 *.key
+*.p12
+*.pfx
+*.jks
+*.der
 .env
 .env.*
 !.env.example

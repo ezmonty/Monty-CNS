@@ -4,7 +4,11 @@
 input=$(cat)
 
 # Check if stop hook is already active (recursion prevention)
-stop_hook_active=$(echo "$input" | jq -r '.stop_hook_active')
+if command -v jq &>/dev/null; then
+  stop_hook_active=$(echo "$input" | jq -r '.stop_hook_active')
+else
+  stop_hook_active=$(echo "$input" | python3 -c "import sys,json; print(json.load(sys.stdin).get('stop_hook_active',''))" 2>/dev/null || echo "")
+fi
 if [[ "$stop_hook_active" = "true" ]]; then
   exit 0
 fi

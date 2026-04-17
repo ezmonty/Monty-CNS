@@ -23,7 +23,11 @@ printf '%s\n' '{"async": true, "asyncTimeout": 120000}'
 
 # 2. Drain stdin (the hook input JSON) so Claude Code's pipe closes cleanly.
 input="$(cat || true)"
-source_kind="$(printf '%s' "$input" | jq -r '.source // "startup"' 2>/dev/null || echo startup)"
+if command -v jq &>/dev/null; then
+  source_kind="$(printf '%s' "$input" | jq -r '.source // "startup"' 2>/dev/null || echo startup)"
+else
+  source_kind="startup"
+fi
 
 # 3. Only do heavy work on a fresh startup, not resume/clear/compact.
 if [[ "$source_kind" != "startup" ]]; then

@@ -1,0 +1,24 @@
+{
+  "name": "ledger",
+  "description": "Monty-Ledger personal knowledge vault — query notes, search content, build context packets, manage profiles and pods. Backed by PostgreSQL with pg_trgm full-text search.",
+  "scope": "user",
+  "config": {
+    "command": "npx",
+    "args": ["tsx", "/home/user/Monty-CNS/monty-ledger/mcp-server/src/index.ts"],
+    "env": {
+      "LEDGER_DATABASE_URL": "${LEDGER_DATABASE_URL}"
+    }
+  },
+  "secrets_required": [
+    {
+      "env": "LEDGER_DATABASE_URL",
+      "description": "PostgreSQL connection string for the Monty-Ledger database, e.g. postgresql://user:pass@localhost:5432/monty_ledger",
+      "store_in": "env.sops.yaml"
+    }
+  ],
+  "notes": [
+    "Requires a running PostgreSQL instance with pg_trgm extension enabled.",
+    "The notes table must exist with columns: path, title, type, tags, access, confidence, role_mode, content, truth_layer, status, created_at.",
+    "Run the Monty-Ledger bootstrap script to initialize the database schema before first use."
+  ]
+}

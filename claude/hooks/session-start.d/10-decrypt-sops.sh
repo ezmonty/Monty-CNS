@@ -16,6 +16,7 @@
 # Override the repo location with $SECRETS_REPO.
 
 set -euo pipefail
+umask 077
 
 SECRETS_REPO="${SECRETS_REPO:-$HOME/src/Monty-CNS-Secrets}"
 AGE_KEY="${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}"
