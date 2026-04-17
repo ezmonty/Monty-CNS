@@ -274,7 +274,7 @@ async function handleQueryNotes(params: Record<string, unknown>) {
   }
 
   if (tags && tags.length > 0) {
-    conditions.push(`tags @> $${paramIdx}`);
+    conditions.push(`EXISTS (SELECT 1 FROM tags t2 WHERE t2.note_id = notes.id AND t2.tag = ANY($${paramIdx}))`);
     values.push(tags);
     paramIdx++;
   }
@@ -295,7 +295,7 @@ async function handleQueryNotes(params: Record<string, unknown>) {
     conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const sql = `
-    SELECT path, title, type, tags, access, confidence, role_mode, truth_layer, status, created_at
+    SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, confidence, role_mode, truth_layer, status, created_at
     FROM notes
     ${whereClause}
     ORDER BY created_at DESC
@@ -316,7 +316,7 @@ async function handleGetNote(params: Record<string, unknown>) {
   const path = params.path as string;
 
   const result = await safeQuery(
-    "SELECT path, title, type, tags, access, confidence, role_mode, truth_layer, status, content, created_at FROM notes WHERE path = $1",
+    "SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, confidence, role_mode, truth_layer, status, content, created_at FROM notes WHERE path = $1",
     [path]
   );
 
@@ -349,7 +349,7 @@ async function handleSearchContent(params: Record<string, unknown>) {
   const maxLevel = accessLevel(accessMax);
 
   const sql = `
-    SELECT path, title, type, tags, access, confidence,
+    SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, confidence,
            similarity(content, $1) AS sim,
            substring(content FROM 1 FOR 500) AS excerpt
     FROM notes
@@ -460,7 +460,7 @@ async function handleGetPod(params: Record<string, unknown>) {
   const name = params.name as string;
 
   const result = await safeQuery(
-    `SELECT path, title, type, tags, access, content, created_at FROM notes
+    `SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, content, created_at FROM notes
      WHERE type = 'pod' AND (LOWER(title) = LOWER($1) OR path ILIKE '%' || $1 || '%')
      LIMIT 1`,
     [name]
@@ -487,7 +487,7 @@ async function handleGetPod(params: Record<string, unknown>) {
 
 async function handleListProfiles() {
   const result = await safeQuery(
-    `SELECT path, title, tags, confidence, role_mode, truth_layer, status, created_at
+    `SELECT path, title, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, confidence, role_mode, truth_layer, status, created_at
      FROM notes
      WHERE type = 'profile'
        AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= 1
@@ -549,11 +549,11 @@ async function handleCreateInboxNote(params: Record<string, unknown>) {
 
   // Insert into Postgres
   const insertResult = await safeQuery(
-    `INSERT INTO notes (path, title, type, tags, access, confidence, status, truth_layer, content, created_at, origin_type)
-     VALUES ($1, $2, $3, $4, 'private', 2, 'review', 'working', $5, $6, 'ai-proposed')
-     ON CONFLICT (path) DO UPDATE SET content = EXCLUDED.content, title = EXCLUDED.title, tags = EXCLUDED.tags
+    `INSERT INTO notes (path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, confidence, status, truth_layer, content, created_at, origin_type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT (path) DO UPDATE SET content = EXCLUDED.content, title = EXCLUDED.title
      RETURNING path`,
-    [vaultPath, title, type, tags, content, today]
+    [vaultPath, title, type, 'private', 2, 'review', 'working', content, today, 'ai-proposed', require('crypto').createHash('sha256').update(content).digest('hex').slice(0,16), vaultPath]
   );
 
   if (insertResult.error) {
