@@ -1,5 +1,13 @@
 # Valor GitHub Integration — Phased Implementation Plan
 
+> **TRANSFER PENDING:** This plan's canonical home is
+> `valor2.0/docs/plans/valor-github-integration.md`. Once the user
+> copies this file to the Valor repo, replace this file with a
+> one-line pointer: `Plan moved to valor2.0 — see
+> docs/plans/valor-github-integration.md (commit 037213d)`.
+> Valor's pointer is at `docs/plans/valor-github-integration-pointer.md`
+> (commit 91d7b77, PR #6).
+
 **Status:** Draft, pending approval
 **Owner:** TBD (defaults to project lead)
 **Target customer:** Remedy Reconstruction (Valor's ConstructionOS vertical)
