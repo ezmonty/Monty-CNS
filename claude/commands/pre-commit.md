@@ -50,7 +50,15 @@ Scan staged files for:
 - General: `TODO`, `FIXME`, `HACK`, `XXX` without explanation
 Report as warnings (don't block, just flag).
 
-### 8. Summary
+### 8. Test Gate Marker
+If ALL checks above passed (no failures):
+- Write the current ISO 8601 timestamp (e.g. `2026-04-17T14:32:00Z`) on a single line to `.claude/.last-test-pass` (create the file and directory if needed).
+
+If ANY check FAILED:
+- Delete `.claude/.last-test-pass` if it exists.
+- Include in the failure output: "Tests failed. The test gate marker has been removed. `/commit` will require a passing `/pre-commit` first."
+
+### 9. Summary
 ```
 Pre-commit results:
 ─────────────────────

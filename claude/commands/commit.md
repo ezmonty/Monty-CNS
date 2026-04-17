@@ -4,6 +4,14 @@ Target: $ARGUMENTS (optional commit message hint, or empty for auto-generated)
 
 ## Steps
 
+### 0. Test Gate Check
+Before anything else, check for `.claude/.last-test-pass`:
+- **File exists and timestamp is less than 15 minutes old** → proceed normally.
+- **File exists but timestamp is older than 15 minutes** → warn: "Test results are stale (>15 min old). Run `/pre-commit` again." Ask the user whether to continue — if they say "commit anyway", proceed.
+- **File does not exist** → warn: "No recent `/pre-commit` pass found. Run `/pre-commit` first." Ask the user whether to continue — if they say "commit anyway", proceed.
+
+This check is advisory, not blocking — the user can always override.
+
 ### 1. Assess What Changed
 ```bash
 git status

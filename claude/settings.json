@@ -32,6 +32,17 @@
                 ]
             }
         ],
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/post-tool-syntax-check.sh"
+                    }
+                ]
+            }
+        ],
         "PreCompact": [
             {
                 "matcher": "",

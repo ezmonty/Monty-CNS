@@ -1,0 +1,26 @@
+{
+  "name": "brave-search",
+  "description": "Brave web search — query the web from Claude Code sessions and subagents. Requires a Brave Search API key.",
+  "scope": "user",
+  "upstream": "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search",
+  "install": {
+    "command": "npm",
+    "args": ["install", "-g", "@modelcontextprotocol/server-brave-search"]
+  },
+  "config": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-brave-search"]
+  },
+  "secrets_required": [
+    {
+      "env": "BRAVE_SEARCH_API_KEY",
+      "description": "Brave Search API key. Create one at https://brave.com/search/api/",
+      "store_in": "env.sops.yaml"
+    }
+  ],
+  "notes": [
+    "The MCP server reads BRAVE_SEARCH_API_KEY directly from its env — store the var under that exact name in env.sops.yaml.",
+    "Free tier allows up to 2,000 queries/month. Paid plans available for higher volume.",
+    "Returns web search results including titles, URLs, and descriptions. Useful for looking up current information, documentation, and troubleshooting."
+  ]
+}
