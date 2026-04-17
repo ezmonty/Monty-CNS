@@ -20,6 +20,7 @@
 #   MONTY_CNS_YES=1                   (unattended: skip every prompt, assume yes)
 #   MONTY_CNS_NO_SECRETS=1            (skip the activate-secrets phase)
 #   MONTY_CNS_NO_MCP=1                (skip the MCP servers phase)
+#   MONTY_CNS_NO_LEDGER=1             (skip the Monty-Ledger clone phase)
 #
 # What this script does NOT do:
 #   - sudo anything without asking
@@ -35,6 +36,9 @@ BRANCH="${MONTY_CNS_BRANCH:-main}"
 YES="${MONTY_CNS_YES:-0}"
 NO_SECRETS="${MONTY_CNS_NO_SECRETS:-0}"
 NO_MCP="${MONTY_CNS_NO_MCP:-0}"
+NO_LEDGER="${MONTY_CNS_NO_LEDGER:-0}"
+LEDGER_REPO="${MONTY_LEDGER_REPO:-https://github.com/ezmonty/Monty-Ledger.git}"
+LEDGER_DIR="${MONTY_LEDGER_DIR:-$HOME/src/Monty-Ledger}"
 
 # ---------- pretty output ----------
 
@@ -95,8 +99,9 @@ if [[ "$YES" != "1" ]]; then
   say "  2. Clone $REPO to $DIR (or pull if it already exists)"
   say "  3. Run bootstrap.sh (symlinks into ~/.claude)"
   [[ "$NO_SECRETS" != "1" ]] && say "  4. Offer to activate secrets (sops + age)"
-  [[ "$NO_MCP"     != "1" ]] && say "  5. Offer to install tracked MCP servers"
-  say "  6. Report next steps"
+  [[ "$NO_LEDGER"  != "1" ]] && say "  5. Offer to clone Monty-Ledger (personal knowledge vault)"
+  [[ "$NO_MCP"     != "1" ]] && say "  6. Offer to install tracked MCP servers"
+  say "  7. Report next steps"
   say
   if ! ask_yes_no "Proceed?" Y; then
     say "Aborted. Nothing changed."
@@ -257,10 +262,50 @@ else
   info "secrets phase skipped (MONTY_CNS_NO_SECRETS=1)"
 fi
 
-# ---------- phase 5: install MCP servers (optional) ----------
+# ---------- phase 5: clone Monty-Ledger (optional) ----------
+
+if [[ "$NO_LEDGER" != "1" ]]; then
+  step "Phase 5 — Monty-Ledger (personal knowledge vault)"
+
+  if [[ -d "$LEDGER_DIR/.git" ]]; then
+    info "Monty-Ledger already present at $LEDGER_DIR"
+    (
+      cd "$LEDGER_DIR"
+      git fetch --quiet origin 2>/dev/null || true
+      current_branch="$(git symbolic-ref --short HEAD 2>/dev/null || echo DETACHED)"
+      if git rev-parse --verify --quiet "origin/$current_branch" >/dev/null 2>&1; then
+        git merge --ff-only "origin/$current_branch" 2>/dev/null || warn "fast-forward failed"
+      fi
+    )
+    ok "Monty-Ledger up to date"
+  else
+    say "  Monty-Ledger is your personal knowledge vault — profiles, decisions,"
+    say "  evidence units, leadership thinking, writing rules. Backed by PostgreSQL"
+    say "  for structured queries from AI agents."
+    say "  Obsidian can open this directory as a vault for browsing."
+    say
+    if ask_yes_no "  Clone Monty-Ledger to $LEDGER_DIR?" Y; then
+      mkdir -p "$(dirname "$LEDGER_DIR")"
+      if git clone "$LEDGER_REPO" "$LEDGER_DIR" 2>&1; then
+        ok "cloned Monty-Ledger"
+        info "Open in Obsidian: File → Open Vault → $LEDGER_DIR"
+      else
+        warn "clone failed — Monty-Ledger is a private repo"
+        info "Make sure git credentials cover github.com/ezmonty/Monty-Ledger"
+        info "Clone manually later: $(bold "git clone $LEDGER_REPO $LEDGER_DIR")"
+      fi
+    else
+      info "skipped. Clone later: $(bold "git clone $LEDGER_REPO $LEDGER_DIR")"
+    fi
+  fi
+else
+  info "Ledger phase skipped (MONTY_CNS_NO_LEDGER=1)"
+fi
+
+# ---------- phase 6: install MCP servers (optional) ----------
 
 if [[ "$NO_MCP" != "1" ]]; then
-  step "Phase 5 — MCP server installation"
+  step "Phase 6 — MCP server installation"
 
   if [[ ! -x "$DIR/claude/mcp/install-servers.sh" ]]; then
     warn "install-servers.sh not found — skipping"
@@ -286,7 +331,7 @@ else
   info "MCP phase skipped (MONTY_CNS_NO_MCP=1)"
 fi
 
-# ---------- phase 6: done ----------
+# ---------- phase 7: done ----------
 
 step "Done"
 
@@ -300,6 +345,7 @@ say "  · Re-run any phase independently:"
 say "      $(bold "$DIR/bootstrap.sh")              # sync symlinks"
 say "      $(bold "$DIR/activate-secrets.sh")        # manage secrets"
 say "      $(bold "~/.claude/mcp/install-servers.sh") # manage MCP servers"
+[[ -d "$LEDGER_DIR" ]] && say "  · Open Monty-Ledger in Obsidian: $(bold "File → Open Vault → $LEDGER_DIR")"
 say
 say "$(bold "Docs:")"
 say "  · $(bold "$DIR/README.md")"

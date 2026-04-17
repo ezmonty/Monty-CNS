@@ -13,7 +13,8 @@
       "-y",
       "@modelcontextprotocol/server-filesystem",
       "${HOME}/scratch",
-      "${HOME}/Documents/claude-workbench"
+      "${HOME}/Documents/claude-workbench",
+      "${HOME}/src/Monty-Ledger"
     ]
   },
   "secrets_required": [],
