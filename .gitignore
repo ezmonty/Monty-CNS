@@ -7,6 +7,9 @@
 .env.*
 !.env.example
 
+# --- Auto-generated session state (PreCompact hook) ---
+.claude/CHECKPOINT.md
+
 # --- Claude runtime / machine-local state ---
 # These live under ~/.claude on each host and should stay local.
 claude/projects/

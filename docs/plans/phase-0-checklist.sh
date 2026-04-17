@@ -14,34 +14,34 @@ skip()  { ((SKIP++));   printf "${YELLOW}[SKIP]${NC}  %s\n" "$1"; }
 manual(){ ((MANUAL++)); printf "${YELLOW}[MANUAL]${NC} %s\n" "$1"; }
 
 WORKLOG="docs/plans/worklogs/valor-github-integration.md"
-VAULT_PATH="secret/valor/github-app"
+SECRETS_FILE="secrets/valor-github-app.sops.yaml"
 WEBHOOK_URLS=("http://localhost:8000/gh-hook" "https://webhook.valor.tail-xxxx.ts.net/gh-hook")
 
-# -- 1. Vault secrets (Milestone 2: private key in Vault) ---------------------
+# -- 1. sops secrets (Milestone 2: private key in sops+age) -------------------
 echo ""
-echo "=== Vault secrets ==="
-if ! command -v vault &>/dev/null; then
-  skip "vault CLI not installed — cannot verify ${VAULT_PATH}"
-elif ! vault status &>/dev/null; then
-  skip "vault server not reachable — cannot verify ${VAULT_PATH}"
+echo "=== sops secrets ==="
+if ! command -v sops &>/dev/null; then
+  skip "sops CLI not installed — cannot verify ${SECRETS_FILE}"
+elif [ ! -f "$SECRETS_FILE" ]; then
+  fail "secrets file not found: ${SECRETS_FILE}"
 else
-  vault_ok=true
+  sops_ok=true
   for field in private_key app_id webhook_secret installation_id; do
-    val=$(vault kv get -field="$field" "$VAULT_PATH" 2>/dev/null) || val=""
+    val=$(sops --decrypt --extract "[\"${field}\"]" "$SECRETS_FILE" 2>/dev/null) || val=""
     if [ -z "$val" ]; then
-      fail "vault field '${field}' missing or empty in ${VAULT_PATH}"
-      vault_ok=false
+      fail "sops field '${field}' missing or empty in ${SECRETS_FILE}"
+      sops_ok=false
     fi
   done
-  if $vault_ok; then
-    pass "all 4 required fields present in ${VAULT_PATH}"
+  if $sops_ok; then
+    pass "all 4 required fields present in ${SECRETS_FILE}"
   fi
 fi
 
 # -- 2. Private key gate (C4 amendment) — CRITICAL ----------------------------
 echo ""
 echo "=== Private key gate (C4 amendment) ==="
-pem_matches=$(find ~/ -name '*.pem' 2>/dev/null | grep -i valor || true)
+pem_matches=$(find ~/ -maxdepth 4 -name '*.pem' ! -path '*/node_modules/*' ! -path '*/.cache/*' 2>/dev/null | grep -i valor || true)
 if [ -n "$pem_matches" ]; then
   fail "CRITICAL — valor .pem file(s) found on disk (shred immediately):"
   echo "$pem_matches" | while read -r f; do printf "       %s\n" "$f"; done

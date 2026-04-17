@@ -31,7 +31,7 @@ for pattern in \
     for f in $pattern; do
         [ -f "$f" ] || continue
         # Grab the last non-empty line that looks like a status marker.
-        candidate="$(grep -iE '(status|state|todo|done|wip|blocked|next)' "$f" \
+        candidate="$(grep -E '^Status:|^## [0-9]{4}-' "$f" \
             | tail -1 2>/dev/null || true)"
         if [ -n "$candidate" ]; then
             task_status="$candidate"
