@@ -49,7 +49,7 @@ This plan ships when all of the following are measurably true:
    repo receives a Valor-Bot-authored review comment within 2 minutes
    of opening, on 99% of attempts over a 7-day rolling window.
 2. **Secure by default.** The Valor App's private key is in the
-   self-hosted Vault, never on a developer laptop, never in a git
+   sops+age encrypted secrets file, never on a developer laptop in plaintext, never in a git
    repo, rotated on a documented schedule.
 3. **Observable.** A Grafana dashboard shows webhook delivery rate,
    signature verification failures, installation token refresh rate,
@@ -115,66 +115,69 @@ phase but would blow up the scope of the first ship:
 ### 4.1 System diagram
 
 ```
-                ┌──────────────────────────────────────────────┐
-                │            github.com                        │
-                │  (Remedy Reconstruction organization)        │
-                │                                              │
-                │  App: valor-bot                              │
-                │  ├── Private key (PEM) — held by Remedy      │
-                │  ├── Webhook URL → Valor tailnet endpoint    │
-                │  ├── Webhook secret (HMAC key)               │
-                │  └── Permissions: Contents:R, PRs:R/W,       │
-                │      Metadata:R                              │
-                │                                              │
-                │  Installation: Remedy's repos                │
-                │  - remedy/cons-os                            │
-                │  - remedy/field-app                          │
-                │  - (others as they onboard)                  │
-                └───────┬──────────────────────────────────────┘
-                        │
-                   webhook POST
-                   (HMAC-signed)
-                        │
-                        ▼
-          ┌────────────────────────────────────┐
-          │  Tailscale tunnel                  │
-          │  webhook.valor.tail-xxxx.ts.net    │
-          │  → rack-hosted Valor production    │
-          └──────────┬─────────────────────────┘
-                     │
-                     ▼
+              ┌──────────────────────────────────────────────┐
+              │            github.com                        │
+              │  (Remedy Reconstruction organization)        │
+              │                                              │
+              │  App: valor-bot                              │
+              │  ├── Private key (PEM) — sops+age encrypted  │
+              │  ├── Webhook URL → fly.io (dev) / rack (prod)│
+              │  ├── Webhook secret (HMAC key)               │
+              │  └── Permissions: Contents:R, PRs:R/W,       │
+              │      Metadata:R                              │
+              │                                              │
+              │  Installation: Remedy's repos                │
+              │  - remedy/cons-os                            │
+              │  - remedy/field-app                          │
+              │  - (others as they onboard)                  │
+              └───────┬──────────────────────────────────────┘
+                      │
+                 webhook POST
+                 (HMAC-signed)
+                      │
+                      ▼
    ┌─────────────────────────────────────────────────┐
-   │  Valor production (self-hosted rack)            │
+   │  Valor (fly.io dev / self-hosted rack prod)     │
    │                                                 │
-   │  FastAPI app (extends existing core/)           │
-   │  ├── POST /gh-hook                              │
+   │  MontyCore (port 8090) — orchestrator           │
+   │  ├── POST /gh-hook (FastAPI webhook receiver)   │
    │  │   1. verify HMAC sig (webhooks.hmac)         │
-   │  │   2. dedupe by X-GitHub-Delivery (Redis)     │
-   │  │   3. enqueue Celery task                     │
+   │  │   2. dedupe by X-GitHub-Delivery (in-memory) │
+   │  │   3. MontyClient.ask(GitHubWebhookAgent)     │
    │  │   4. return 200 in <500ms                    │
    │  │                                              │
-   │  └── Celery worker                              │
-   │      1. fetch installation token (cached)      │
-   │      2. call GitHubKit client to get PR diff    │
-   │      3. dispatch to Valor code review agent     │
-   │         (via MontyCore /ask endpoint)           │
-   │      4. format comment as markdown              │
-   │      5. post comment via GitHubKit              │
-   │      6. record audit log entry                  │
+   │  ├── GitHubWebhookAgent (port TBD, NEW)         │
+   │  │   1. fetch installation token (cached)       │
+   │  │   2. GitHubKit client → fetch PR diff        │
+   │  │   3. MontyClient.ask(BuildHarnessAgent)      │
+   │  │      for rubric-driven code review           │
+   │  │   4. format comment as markdown              │
+   │  │   5. post comment via GitHubKit              │
+   │  │   6. record audit log entry                  │
+   │  │                                              │
+   │  ├── BuildHarnessAgent (port 8150, EXISTS)      │
+   │  │   review executor: rubric-driven QA,         │
+   │  │   cross-brain QA, retry w/ feedback,         │
+   │  │   provider="agent:<name>" mesh dispatch      │
+   │  │                                              │
+   │  ├── LLMToolAgent (port 8210, EXISTS)           │
+   │  │   canonical LLM spine — all brain calls      │
+   │  │                                              │
+   │  └── 52 registered agents across 8 pods         │
    │                                                 │
    │  Supporting:                                    │
-   │  - HashiCorp Vault (holds App private key)      │
-   │  - Redis (token cache, dedupe, Celery broker)   │
+   │  - sops+age encrypted secrets (via Monty-CNS)   │
+   │  - In-memory caches (token, dedupe) — Redis     │
+   │    added when rack ships                        │
    │  - Prometheus (metrics)                         │
-   │  - Grafana (dashboards)                         │
-   │  - Loki or file logs (structured JSON)          │
+   │  - Structured JSON logs to stdout               │
    └─────────────────────────────────────────────────┘
                      │
            GitHub API calls
            (installation token)
                      │
                      ▼
-                github.com API
+              github.com API
 ```
 
 ### 4.2 New modules (all additive)
@@ -187,8 +190,9 @@ valor2.0/
 │   ├── config.py             (existing — extend with GITHUB_* vars)
 │   ├── approval_token_store.py (existing — reference pattern for…)
 │   ├── github_auth.py        (NEW — JWT + installation token logic)
-│   ├── github_token_cache.py (NEW — Redis-backed installation token cache)
-│   └── github_client.py      (NEW — GitHubKit wrapper w/ retries + metrics)
+│   ├── github_token_cache.py (NEW — in-memory TTL cache, Redis-ready interface)
+│   ├── github_client.py      (NEW — GitHubKit wrapper w/ retries + metrics)
+│   └── agent_client.py       (EXISTING — MontyClient, the dispatch primitive)
 │
 ├── webhooks/                 (NEW directory)
 │   ├── __init__.py
@@ -196,14 +200,12 @@ valor2.0/
 │   │   ├── __init__.py
 │   │   ├── router.py         (FastAPI router: POST /gh-hook)
 │   │   ├── signature.py      (HMAC verification, pure function)
-│   │   ├── dedupe.py         (Redis-backed idempotency)
+│   │   ├── dedupe.py         (in-memory idempotency, Redis-ready interface)
 │   │   └── events.py         (event type → handler dispatch)
 │
-├── agents/                   (existing directory — add one new agent)
-│   └── github_pr_reviewer.py (NEW agent, follows Valor V2 envelope)
-│
-├── tasks/                    (Celery tasks)
-│   └── github_pr_review.py   (NEW — the async PR review pipeline)
+├── agents/                   (existing directory — 52 agents across 8 pods)
+│   ├── BuildHarnessAgent.py  (EXISTS — port 8150, review executor)
+│   └── GitHubWebhookAgent.py (NEW — webhook handler + PR review pipeline)
 │
 ├── tests/
 │   ├── conftest.py           (existing — extend with GitHub fixtures)
@@ -254,23 +256,29 @@ zero touch to existing functionality.
 5. **HMAC verification** (`signature.verify`) — returns 401 if bad signature, constant-time comparison
 6. **Dedupe check** (`dedupe.already_processed(delivery_id)`) — returns 200 if already seen
 7. **Event routing** (`events.dispatch(event_type, payload)`) — routes `pull_request.opened` to the PR reviewer handler
-8. Handler enqueues a Celery task `github_pr_review(delivery_id, payload)` and returns 200
-9. Celery worker picks up the task
-10. Worker calls `get_installation_token(app_id, installation_id)` → cache hit or fresh mint
-11. Worker uses `github_client.get_pull_request(owner, repo, number)` to fetch full PR metadata + diff
-12. Worker dispatches to Valor's code review agent via MontyCore `/ask`:
-    ```json
-    {
-      "command": "review_pr",
-      "data": {"diff": "...", "files": [...], "title": "...", "body": "..."},
-      "session_id": "gh-delivery-<id>"
-    }
+8. Handler calls `MontyClient.ask(target_agent="GitHubWebhookAgent", payload={delivery_id, event_type, payload}, task_id=delivery_id)` and returns 200
+9. **GitHubWebhookAgent** (NEW, registered in MontyCore) receives the dispatch
+10. Agent calls `get_installation_token(app_id, installation_id)` → cache hit or fresh mint
+11. Agent uses `github_client.get_pull_request(owner, repo, number)` to fetch full PR metadata + diff
+12. Agent dispatches to **BuildHarnessAgent** (port 8150, EXISTS) for rubric-driven code review:
+    ```python
+    MontyClient.ask(
+        target_agent="BuildHarnessAgent",
+        payload={
+            "command": "review",
+            "task_type": "code_review",
+            "data": {"diff": "...", "files": [...], "title": "...", "body": "..."},
+            "provider": "agent:LLMToolAgent",  # mesh dispatch for brain calls
+        },
+        task_id=f"gh-review-{delivery_id}",
+        timeout=120,
+    )
     ```
-13. Agent returns a structured review in V2 envelope format
-14. Worker formats the review as markdown (template in `tasks/github_pr_review.py`)
-15. Worker posts comment via `github_client.post_pr_comment()`
-16. Worker records an audit log entry (structured JSON, stored + emitted as metric)
-17. **Second delivery for the same commit** (GitHub retry or re-push) → dedupe step returns 200 early, OR if new commit, worker detects existing comment and **edits** it instead of posting duplicate
+13. BuildHarnessAgent runs rubric-driven review (cross-brain QA, retry with feedback up to 3 attempts), returns structured review in V2 envelope
+14. GitHubWebhookAgent formats the review as markdown
+15. Agent posts comment via `github_client.post_pr_comment()`
+16. Agent records an audit log entry (structured JSON, stored + emitted as metric)
+17. **Second delivery for the same commit** (GitHub retry or re-push) → dedupe step returns 200 early, OR if new commit, agent detects existing comment and **edits** it instead of posting duplicate
 
 ### 4.4 Trust boundaries
 
@@ -280,17 +288,22 @@ Three trust boundaries, each with its own verification:
   Constant-time comparison. Body read raw before any JSON parsing
   (so re-serialization doesn't break the signature).
 - **Valor → GitHub API:** installation token (1-hour TTL) minted from
-  a JWT signed with the App private key. Private key lives in Vault,
-  fetched once at worker startup, held in process memory only. Tokens
-  cached in Redis with TTL, never written to disk.
-- **Webhook handler → Celery worker:** internal Valor trust boundary.
-  The handler enqueues tasks; the worker trusts the task payload.
-  Payload validation happens at enqueue time (pydantic models), so
-  malformed deliveries are rejected before they become tasks.
+  a JWT signed with the App private key. Private key decrypted from
+  sops+age secrets at agent startup, held in process memory only.
+  Tokens cached in-memory with TTL, never written to disk.
+- **Webhook handler → GitHubWebhookAgent:** internal Valor trust
+  boundary via MontyCore /ask. The handler dispatches via
+  `MontyClient.ask()`; the agent trusts the dispatch payload.
+  Payload validation happens at dispatch time (pydantic models), so
+  malformed deliveries are rejected before they reach the agent.
+- **GitHubWebhookAgent → BuildHarnessAgent:** internal Valor trust
+  boundary. BuildHarnessAgent receives a review task via MontyCore
+  /ask and applies rubric-driven QA. Its output is schema-validated
+  before GitHubWebhookAgent posts it as a comment (C1 amendment).
 
 Anything the handler can't verify is rejected at 401 before touching
-the dedupe cache or the task queue. **Untrusted data never reaches the
-Celery worker.**
+the dedupe cache or the dispatch pipeline. **Untrusted data never
+reaches the agent mesh.**
 
 ### 4.5 Where each piece of Valor's existing infrastructure plugs in
 
@@ -298,16 +311,19 @@ Celery worker.**
 |---|---|
 | `core/auth.py` (VALOR_API_KEY, `check_api_key`) | Inbound endpoints for internal Valor calls (unchanged) |
 | `core/config.py` (`os.getenv` pattern) | Extended with `GITHUB_APP_*` variables |
+| `core/agent_client.py` (MontyClient) | **The dispatch primitive.** All async work uses `MontyClient.ask()` |
 | `core/approval_token_store.py` | Pattern reference for `core/github_token_cache.py` |
-| MontyCore `/ask` endpoint | How the PR reviewer task talks to the code review agent |
+| MontyCore `/ask` endpoint (port 8090) | How GitHubWebhookAgent dispatches to BuildHarnessAgent and others |
+| LLMToolAgent (port 8210) | Canonical LLM spine — all brain calls route through it |
+| BuildHarnessAgent (port 8150) | **Review executor.** Rubric-driven QA, cross-brain, retry w/ feedback |
+| `provider="agent:<name>"` mesh spawn | BuildHarnessAgent can dispatch sub-steps to any registered agent |
 | V2 envelope format (`{status, data, error}`) | All new handlers return V2 envelopes |
-| Celery + Redis (existing broker) | New `github_pr_review` task plugs into existing worker pool |
 | `tests/conftest.py` (socket reachability fixtures) | Extended with GitHub mock fixtures |
 | `tests/smoke_*.py` convention | New `smoke_github_*.py` scripts follow the same standalone-script pattern |
 | `.github/workflows/ship-gate.yml` cross-platform matrix | New `test-github-integration` job added alongside |
 | `configs/intuit_oauth.json` (Intuit OAuth pattern) | Pattern reference for App config shape |
-| HashiCorp Vault on the rack (self-hosting.md) | Production home for the App private key |
-| Tailscale (self-hosting.md) | Production fronting for the webhook URL |
+| sops+age encrypted secrets (via Monty-CNS) | Secrets store for App private key, webhook secret |
+| Tailscale (when rack ships) / fly.io public URL (dev) | Fronting for the webhook URL |
 
 The plan is **mostly glue** on top of existing patterns. That's deliberate — the less new infrastructure we introduce, the less novel failure surface we own.
 
@@ -420,8 +436,8 @@ test suite** that exercises:
 - Installation token refresh failures (simulated 401, 500, timeout)
 - GitHub API rate limit responses (simulated 429 with `Retry-After`)
 - Redis unavailable during dedupe check
-- Celery worker crash mid-task
-- Vault unavailable at worker startup
+- agent process crash mid-task
+- secrets file unavailable or undecryptable at agent startup
 - Partial webhook delivery (truncated body)
 - Replay attacks (same delivery ID, different body)
 - Signature replay (valid signature, different body)
@@ -450,13 +466,13 @@ rotation (since the operator believes the credential is fresh).
 explicit cache-invalidation steps for every layer that caches the
 credential.** For the Valor App:
 1. Generate a new private key via github.com/apps/valor-bot
-2. Store in Vault as `prod/github-app/private-key-v2`
-3. Update worker config to try v2 first, fall back to v1
-4. Deploy workers (they'll fetch v2 at startup)
-5. **Invalidate the Redis installation token cache** —
-   `redis-cli -n 0 DEL github:installation_token:*`
+2. Encrypt into secrets file as `private_key_v2`
+3. Update agent config to try v2 first, fall back to v1
+4. Redeploy agents (they'll decrypt v2 at startup)
+5. **Invalidate the in-memory installation token cache** — restart
+   agent processes (or add a cache-clear command)
 6. Revoke v1 from github.com
-7. Remove v1 from Vault
+7. Remove v1 from secrets file, re-encrypt
 8. Remove fallback code
 
 Step 5 is the one that would get skipped if the playbook didn't
@@ -609,7 +625,7 @@ Examples:
 ```
 valor/github-integration/phase-0/A-register-app
 valor/github-integration/phase-1/B-installation-token-fetcher
-valor/github-integration/phase-3/D-celery-enqueue
+valor/github-integration/phase-3/D-montycore-dispatch
 ```
 
 The top-level integration branch `valor/github-integration` is the
@@ -753,7 +769,7 @@ any code changes.
 
 ### Phase 0 — Foundations
 
-**Goal:** Register the GitHub App, store its private key in Vault,
+**Goal:** Register the GitHub App, store its private key in sops+age encrypted secrets,
 stand up an empty webhook receiver, and **prove end-to-end that a
 real GitHub webhook delivery reaches a real Valor log entry** before
 any functional code is written.
@@ -772,54 +788,68 @@ any functional code is written.
 - `vgi-0.A.2` Set permissions: `Contents: Read`, `Pull requests:
   Read and write`, `Metadata: Read`. Subscribe to events: `pull_request`.
 - `vgi-0.A.3` Generate private key, download the `.pem` once.
-  **⚠️ (C4 amendment) The `.pem` MUST be moved to Vault within the
-  same shell session it was downloaded in — see 0.B.3 for the exact
-  commands. Do NOT store it on a USB, do NOT email it, do NOT leave
-  it in `~/Downloads/` even briefly. Success criterion #2 says
-  "never on a developer laptop" — that means the time between
-  download and `vault kv put` is the only window the key exists
-  outside Vault, and it must be measured in seconds, not hours.**
+  **⚠️ (C4 amendment) The `.pem` MUST be encrypted into the sops
+  secrets file within the same shell session it was downloaded in —
+  see 0.B.3 for the exact commands. Do NOT store it on a USB, do NOT
+  email it, do NOT leave it in `~/Downloads/` even briefly. Success
+  criterion #2 says "never on a developer laptop in plaintext" — that
+  means the time between download and `sops --encrypt` is the only
+  window the key exists in plaintext, and it must be measured in
+  seconds, not hours.**
 - `vgi-0.A.4` Note the App ID (integer) and a dummy webhook secret
   (cryptographically random 32-byte string) — both go directly to
-  Vault in 0.B, not to a "secure note" intermediary.
+  the encrypted secrets file in 0.B, not to a "secure note"
+  intermediary.
 - `vgi-0.A.5` Install the App on a designated **test repository**
   (not a production repo), e.g. `remedy/valor-bot-test-sandbox`.
   Record the installation ID.
 
-#### Workstream 0.B — Vault setup
+#### Workstream 0.B — Secrets setup (sops+age)
 
-- `vgi-0.B.1` Install HashiCorp Vault on the self-hosted rack
-  (follow `docs/self-hosting.md` Tailscale pattern so the Vault
-  endpoint is only reachable from the tailnet).
-- `vgi-0.B.2` Initialize Vault with a reasonable seal policy (Shamir
-  with 3-of-5 unseal keys stored in the compromise playbook
-  locations).
+- `vgi-0.B.1` Create the secrets file
+  `secrets/valor-github-app.sops.yaml` (gitignored in plaintext
+  form). Use the sops+age pattern from Monty-CNS. The `.sops.yaml`
+  creation rule at the repo root must cover this file path.
+- `vgi-0.B.2` Add age recipients to `.sops.yaml` for every machine
+  that needs to decrypt (dev workstation, cloud host, future rack).
+  Recovery key stored offline per Monty-CNS convention.
 - `vgi-0.B.3` **(C4 amendment) Exact key-transfer procedure:**
   On the workstation where the `.pem` was downloaded (MUST have FDE
   enabled — verify with `fdesetup status` on macOS or equivalent):
   ```bash
-  # Transfer to Vault in one command over the tailnet
-  vault kv put secret/valor/github-app \
-    private_key=@~/Downloads/valor-bot.*.private-key.pem \
-    app_id=<from step 0.A.2> \
-    webhook_secret=<from step 0.A.4> \
-    installation_id=<from step 0.A.5>
+  # Create the plaintext secrets file
+  cat > /tmp/valor-github-app.yaml << SECRETS
+  private_key: |
+    $(cat ~/Downloads/valor-bot.*.private-key.pem)
+  app_id: "<from step 0.A.2>"
+  webhook_secret: "<from step 0.A.4>"
+  installation_id: "<from step 0.A.5>"
+  SECRETS
 
-  # Immediately shred the local .pem
+  # Encrypt with sops+age (recipients from .sops.yaml)
+  sops --encrypt /tmp/valor-github-app.yaml > secrets/valor-github-app.sops.yaml
+
+  # Shred ALL plaintext copies
+  shred -u /tmp/valor-github-app.yaml 2>/dev/null \
+    || rm -f /tmp/valor-github-app.yaml
   shred -u ~/Downloads/valor-bot.*.private-key.pem 2>/dev/null \
     || rm -f ~/Downloads/valor-bot.*.private-key.pem
 
-  # Verify it's gone
-  find ~/ -name '*.pem' 2>/dev/null | grep -i valor
-  # MUST return empty. If not, delete whatever was found.
+  # Verify gone
+  find ~/ /tmp -name '*.pem' -o -name 'valor-github-app.yaml' 2>/dev/null | grep -i valor
+  # MUST return empty.
+
+  # Verify decryption works
+  sops --decrypt secrets/valor-github-app.sops.yaml | grep -c private_key
+  # MUST return 1.
   ```
-  Do NOT commit anything to git. Do NOT use an encrypted USB or
-  any other intermediary. The `.pem` touches exactly two places:
-  the browser download directory (briefly) and Vault (permanently).
-- `vgi-0.B.4` Create a Vault policy `valor-gh-reader` with read-only
-  access to `secret/valor/github-app/*` and issue a token for the
-  Valor worker process. Store that token in the same way Valor
-  already handles other service credentials.
+  Do NOT commit the plaintext file to git. The `.pem` touches
+  exactly two places: the browser download directory (briefly) and
+  the sops-encrypted file (permanently, at rest encrypted).
+- `vgi-0.B.4` Verify the Valor agent process can decrypt at startup:
+  the age private key must be at `~/.config/sops/age/keys.txt`
+  (same location Monty-CNS uses). Test with
+  `GITHUB_APP_PRIVATE_KEY=$(sops --decrypt --extract '["private_key"]' secrets/valor-github-app.sops.yaml)`.
 - `vgi-0.B.5` Document the rotation procedure in
   `docs/plans/valor-github-integration-runbook.md` (phase 9 will
   expand this, but the skeleton goes here).
@@ -866,7 +896,7 @@ broken and phase 1 work on top of a broken foundation is wasted.
 **Milestones:**
 
 1. 🪪 App registered, permissions set, installed on sandbox repo
-2. 🔒 Private key in Vault, worker can read it
+2. 🔒 Private key in sops-encrypted secrets file, agent can decrypt it
 3. 🌐 Empty webhook receiver returns 200 for any POST
 4. 🚨 **End-to-end delivery verified by matching X-GitHub-Delivery UUIDs** (this is the phase 0 gate)
 
@@ -883,7 +913,7 @@ broken and phase 1 work on top of a broken foundation is wasted.
 
 - All 4 milestones achieved
 - Worklog entry `phase-0-verification-complete` committed
-- **(C4 amendment) Private key gate:** `find ~/ -name '*.pem' 2>/dev/null | grep -i valor` returns empty on every machine that touched the `.pem` during registration. The `.pem` exists ONLY inside Vault at `secret/valor/github-app`. If any copy is found on disk, phase 0 is NOT complete — shred it, then re-verify.
+- **(C4 amendment) Private key gate:** `find ~/ -name '*.pem' 2>/dev/null | grep -i valor` returns empty on every machine that touched the `.pem` during registration. The `.pem` exists ONLY inside `secrets/valor-github-app.sops.yaml` (encrypted at rest). If any copy is found on disk, phase 0 is NOT complete — shred it, then re-verify.
 - No code on phase-1 branches yet
 
 ---
@@ -894,7 +924,7 @@ broken and phase 1 work on top of a broken foundation is wasted.
 so any Valor process can obtain a valid GitHub App installation token
 on demand, with automatic caching and refresh.
 
-**Dependencies:** phase 0 complete (Vault populated, private key
+**Dependencies:** phase 0 complete (secrets encrypted, private key
 readable).
 
 **Workstreams (parallel):**
@@ -948,7 +978,7 @@ readable).
 - `vgi-1.C.4` Add invalidation function
   `invalidate_installation_token(installation_id: int)` for the
   rotation runbook to call.
-- `vgi-1.C.5` Integration test against real Redis: concurrent
+- `vgi-1.C.5` Integration test against real cache backend: concurrent
   access, stampede handling (only one fetcher runs when many
   callers race on expiry).
 
@@ -958,9 +988,9 @@ readable).
   `GITHUB_APP_ID: int`, `GITHUB_APP_INSTALLATION_ID: int`,
   `GITHUB_WEBHOOK_SECRET: str`, `GITHUB_APP_PRIVATE_KEY_PATH: Path`.
   All via `os.getenv` following the existing convention.
-- `vgi-1.D.2` Fetch private key from Vault at worker startup, hold
+- `vgi-1.D.2` Fetch private key from sops-encrypted secrets at agent startup, hold
   in process memory. Add `load_github_private_key()` helper that
-  checks env first (for dev), then Vault (for prod).
+  checks env first (for dev), then sops-decrypted secrets file (for prod).
 - `vgi-1.D.3` Update `.env.example` with the new variables and
   placeholder values. **Do not add comments** (dogfood lesson 5.3).
 - `vgi-1.D.4` Add smoke test `tests/smoke_github_auth.py` that
@@ -972,7 +1002,7 @@ readable).
 1. 🔑 `mint_jwt()` passes 100% unit test coverage
 2. 🎟️ `get_installation_token()` returns a valid token from real GitHub
 3. ♻️ `get_cached_installation_token()` demonstrates cache hit in metrics
-4. ⚙️ Config loads from env or Vault and wires through to the fetcher
+4. ⚙️ Config loads from env or sops-decrypted secrets and wires through to the fetcher
 5. 🚬 `tests/smoke_github_auth.py` passes against real GitHub
 
 **Tests (phase 1):**
@@ -1085,7 +1115,7 @@ auth, rate limit handling, retries, structured logging, and metrics.
 
 **Goal:** Implement the full webhook receiver pipeline — HMAC
 verification, delivery deduplication, event routing, and async
-handoff to Celery — replacing the empty handler from phase 0.C with
+handoff to MontyCore async dispatch — replacing the empty handler from phase 0.C with
 a production-grade implementation.
 
 **Dependencies:** phase 0 (endpoint stood up, delivery reaching the
@@ -1144,7 +1174,7 @@ phase 2 (client available for any synchronous API calls).
   immediately (promoted to P0).
 - `vgi-3.B.6` Unit test with mocked Redis: new delivery, duplicate,
   TTL expiry, **Redis unavailable → 503 returned** (the C3
-  regression test), Redis reconnect → normal operation resumes.
+  regression test), cache reconnect → normal operation resumes.
 
 #### Workstream 3.C — Event router
 
@@ -1152,7 +1182,7 @@ phase 2 (client available for any synchronous API calls).
   map `EVENT_HANDLERS: dict[str, Callable]` keyed by GitHub
   `X-GitHub-Event` header value.
 - `vgi-3.C.2` Each handler is a pure function that takes the
-  parsed payload (as a pydantic model) and returns a Celery task
+  parsed payload (as a pydantic model) and returns a MontyCore async dispatch task
   signature to enqueue.
 - `vgi-3.C.3` For unknown events: return 200 with a warning log
   entry but no enqueue. Don't reject unknown events (GitHub adds
@@ -1164,29 +1194,29 @@ phase 2 (client available for any synchronous API calls).
   event with unknown action, unknown event entirely, malformed
   payload.
 
-#### Workstream 3.D — Celery enqueue + router assembly
+#### Workstream 3.D — MontyCore async dispatch enqueue + router assembly
 
 - `vgi-3.D.1` Update `webhooks/github/router.py` to the full
   pipeline: read raw body → verify signature → check dedupe →
-  parse payload → dispatch to event router → enqueue Celery task
+  parse payload → dispatch to event router → dispatch via MontyClient.ask()
   → return 200 within 500ms.
-- `vgi-3.D.2` Use FastAPI's `BackgroundTasks` for the Celery
+- `vgi-3.D.2` Use FastAPI's `BackgroundTasks` for the MontyCore async dispatch
   enqueue (or direct `.delay()` call — decide based on Valor's
-  existing Celery pattern from `tasks/`).
+  existing MontyCore async dispatch pattern from `tasks/`).
 - `vgi-3.D.3` Structured log every accepted delivery: delivery_id,
   event_type, action, repo, enqueued_task_id.
 - `vgi-3.D.4` Test that the response returns in <500ms p99
   (load test with 100 concurrent deliveries).
 - `vgi-3.D.5` Add `tests/smoke_github_webhook.py` — fabricates a
   signed delivery and POSTs it to a local instance, asserts 200
-  and that a Celery task was enqueued.
+  and that a MontyClient dispatch was sent.
 
 **Milestones:**
 
 1. 🛡️ Invalid signatures return 401 within 10ms (verification is fast)
 2. 🔁 Duplicate `X-GitHub-Delivery` UUIDs are detected in Redis
 3. 🗂️ `pull_request.opened` events dispatch to the correct handler
-4. 🚀 Accepted deliveries enqueue a Celery task and return 200 in <500ms p99
+4. 🚀 Accepted deliveries dispatch via MontyClient.ask() and return 200 in <500ms p99
 5. 🚬 `smoke_github_webhook.py` passes end-to-end against a running Valor instance
 
 **Tests (phase 3):**
@@ -1195,10 +1225,10 @@ phase 2 (client available for any synchronous API calls).
   (hit, miss, TTL, Redis down), event router (known, unknown,
   malformed)
 - Integration: `tests/integration/github/test_webhook_roundtrip.py` —
-  real Valor instance + real Redis, send fabricated signed
+  real Valor instance + real cache backend, send fabricated signed
   delivery, assert task enqueued
 - Failure injection: signature fails, dedupe fails, router raises,
-  Celery enqueue fails — each should degrade gracefully and not
+  MontyClient dispatch fails — each should degrade gracefully and not
   eat deliveries
 - Security: replay attack (same body, new delivery ID, attacker
   modifies body), wrong secret, rate-limit abuse (100k requests
@@ -1232,7 +1262,7 @@ auth works, client is callable.
 
 #### Workstream 4.A — PR metadata fetcher
 
-- `vgi-4.A.1` Create `tasks/github_pr_review.py` with a Celery task
+- `vgi-4.A.1` In `agents/GitHubWebhookAgent.py` (the /ask handler), create
   `github_pr_review_task(delivery_id: str, payload: dict)`.
 - `vgi-4.A.2` Task extracts `owner`, `repo`, `pr_number`,
   `installation_id` from the payload (pydantic model).
@@ -1407,7 +1437,7 @@ auth works, client is callable.
 
 **Milestones:**
 
-1. 🧪 A test PR on the sandbox repo triggers a Celery task that completes
+1. 🧪 A test PR on the sandbox repo triggers a agent dispatch that completes
 2. ✍️ The task produces a markdown review comment
 3. 📮 The comment is posted to the PR via the GitHub API
 4. 🔁 A second delivery for the same head sha edits the comment instead of posting a duplicate
@@ -1461,7 +1491,7 @@ observe).
   stdlib `logging` with a JSON formatter.
 - `vgi-5.A.2` Correlation ID plumbed through the full request:
   generated on webhook arrival (from `X-GitHub-Delivery` UUID),
-  propagated to the Celery task, propagated to every GitHub API
+  propagated to the MontyCore async dispatch task, propagated to every GitHub API
   call, propagated to every MontyCore call.
 - `vgi-5.A.3` **Never log**: request bodies, response bodies, JWT
   values, installation tokens, private keys, webhook secrets,
@@ -1663,10 +1693,10 @@ categories that don't fit inside a single workstream.
   `pytest -m failure_injection`.
 - `vgi-6.F.2` Add chaos scenarios:
   - Redis goes down mid-dedupe
-  - Vault goes down at worker startup
+  - secrets file unreadable at agent startup
   - GitHub API returns 500 for all requests for 1 minute
   - MontyCore times out for 30 seconds
-  - Celery broker disconnects mid-task
+  - MontyCore /ask times out mid-dispatch
   - Clock skew ±5 minutes
 - `vgi-6.F.3` Each chaos scenario has a named test with expected
   graceful-degradation behavior documented.
@@ -1686,7 +1716,7 @@ categories that don't fit inside a single workstream.
   - `test_error_path_coverage` — asserts the failure-injection
     suite has at least 20 named tests
   - `test_credential_rotation_invalidates_caches` — rotation
-    procedure test hits real Redis and verifies cache clear
+    procedure test hits real cache backend and verifies cache clear
   - `test_runbook_has_recovery_paths` — parses runbook markdown
     and asserts every procedure has an "If … fails" subsection
 - `vgi-6.G.2` Dogfood regression tests run on every CI build.
@@ -1734,10 +1764,10 @@ review sign-off (phase 6.E.3) obtained.
   multi-service container convention.
 - `vgi-7.A.2` Image entrypoint runs the FastAPI app under
   `uvicorn` with appropriate worker count from env vars.
-- `vgi-7.A.3` Celery worker uses the same image with a different
-  entrypoint (`celery -A tasks.github_pr_review worker`).
+- `vgi-7.A.3` agent process uses the same image with a different
+  entrypoint (`agent process (via MontyCore)`).
 - `vgi-7.A.4` Image health check endpoint `/healthz` returns
-  200 when: FastAPI boots, Redis reachable, Vault reachable,
+  200 when: FastAPI boots, cache layer healthy, secrets loaded,
   GitHub API reachable (simple `/zen` call).
 - `vgi-7.A.5` CI build publishes the image to whatever registry
   Valor uses (self-hosted Harbor on the rack, or GitHub Container
@@ -1747,17 +1777,17 @@ review sign-off (phase 6.E.3) obtained.
 
 - `vgi-7.B.1` Dedicated staging namespace/VM on the rack,
   **physically isolated** from production (separate Redis,
-  separate Vault mount, separate logs). No shared state with
+  separate sops secrets file, separate logs). No shared state with
   prod.
-- `vgi-7.B.2` Staging Vault holds a staging App private key
+- `vgi-7.B.2` Staging secrets file holds a staging App private key
   (a different App from production — `valor-bot-staging`).
 - `vgi-7.B.3` Staging Tailscale webhook URL
   `webhook.valor-staging.tail-xxxx.ts.net` points at the
   staging webhook endpoint.
 - `vgi-7.B.4` `docker-compose.staging.yml` (or equivalent)
   committed to `infra/staging/` defines the full staging stack:
-  webhook receiver, Celery workers (×2), Redis, Prometheus,
-  Grafana, Vault agent.
+  webhook receiver, agent processs (×2), Redis, Prometheus,
+  Grafana, sops decrypt helper.
 - `vgi-7.B.5` Smoke deploy: `docker-compose -f infra/staging/docker-compose.staging.yml up -d`,
   verify `/healthz` returns 200 on all services.
 
@@ -1770,7 +1800,7 @@ review sign-off (phase 6.E.3) obtained.
   test repo `remedy/valor-staging-sandbox`.
 - `vgi-7.C.3` Webhook URL points at the staging Tailscale
   endpoint.
-- `vgi-7.C.4` Populate staging Vault with the staging App's
+- `vgi-7.C.4` Populate staging secrets file with the staging App's
   credentials.
 
 #### Workstream 7.D — 48-hour soak test
@@ -1787,8 +1817,8 @@ review sign-off (phase 6.E.3) obtained.
   - 0 unhandled exceptions in logs
   - All alerts fire as expected on injected failures
   - Grafana dashboard shows healthy trends
-- `vgi-7.D.3` Restart test: mid-soak, restart one Celery worker.
-  Verify zero task loss (in-flight tasks redriven by Celery
+- `vgi-7.D.3` Restart test: mid-soak, restart one agent process.
+  Verify zero task loss (in-flight tasks redriven by MontyCore
   broker).
 - `vgi-7.D.4` Upgrade test: mid-soak, deploy a new image
   version with a trivial change. Verify zero dropped deliveries
@@ -1825,14 +1855,14 @@ engineering leadership has approved the rollout window.
 
 **Workstreams (mostly sequential within this phase):**
 
-#### Workstream 8.A — Production Vault + App
+#### Workstream 8.A — Production secrets + App
 
-- `vgi-8.A.1` Production Vault entries populated with the
+- `vgi-8.A.1` Production secrets file populated with the
   production App's private key (the one generated in phase 0.A).
 - `vgi-8.A.2` Production Tailscale webhook URL confirmed live.
 - `vgi-8.A.3` Production App webhook URL updated from the phase-0
   placeholder to the real Tailscale endpoint.
-- `vgi-8.A.4` Production Vault has 3 unseal keys stored per the
+- `vgi-8.A.4` Production secrets file has age recipients configured per the
   compromise playbook — at least one offline.
 
 #### Workstream 8.B — Feature flag
@@ -1900,7 +1930,7 @@ engineering leadership has approved the rollout window.
 
 **Milestones:**
 
-1. 🔐 Production Vault entries verified
+1. 🔐 Production secrets verified
 2. 🎚️ Feature flag controls which repos the bot acts on
 3. 🐣 Canary 1-repo stage complete, 24h clean
 4. 📈 Canary expansion to 100% complete, all checkpoints green
@@ -1939,22 +1969,22 @@ validates it.
   - Deploy procedure (from 7.A, 7.B, 8.A)
   - Rollback procedure (from 8.D)
   - Rotation procedures (App private key, webhook secret,
-    Vault unseal keys) — see 9.A.1.a for the webhook secret
+    age key rotation) — see 9.A.1.a for the webhook secret
     dual-secret rotation window procedure
   - Common incidents with symptom → cause → fix paths per
     dogfood lesson 5.6
   - Escalation paths
   - On-call rotation schedule
 - `vgi-9.A.1.a` **(C5 amendment) Webhook secret rotation —
-  dual-secret window.** Naive rotation (swap secret in Vault,
-  redeploy worker) drops every in-flight delivery signed with
+  dual-secret window.** Naive rotation (swap secret in secrets file,
+  redeploy agent) drops every in-flight delivery signed with
   the old secret — a self-inflicted outage every rotation. The
   runbook MUST document this six-step procedure:
-  1. Generate `webhook_secret_v2` (32 bytes, base64) and write
-     it to Vault at `secret/valor/github-app` alongside the
+  1. Generate `webhook_secret_v2` (32 bytes, base64) and add
+     it to `secrets/valor-github-app.sops.yaml` alongside the
      existing `webhook_secret` (which we now treat as v1).
   2. Deploy worker config that reads BOTH `webhook_secret_v1`
-     and `webhook_secret_v2` from Vault. `signature.verify`
+     and `webhook_secret_v2` from the secrets file. `signature.verify`
      tries v2 first, falls back to v1 — both return "valid."
      Log which version matched at `info` level (metric:
      `webhook_signature_version{version}`).
@@ -1969,9 +1999,9 @@ validates it.
      proceeding.
   5. Deploy worker config that reads ONLY `webhook_secret_v2`.
      `signature.verify` reverts to single-secret mode.
-  6. Remove `webhook_secret_v1` from Vault
-     (`vault kv patch secret/valor/github-app
-     webhook_secret_v1=-`). Rename `webhook_secret_v2` back to
+  6. Remove `webhook_secret_v1` from the secrets file
+     (edit the sops file to remove the v1 field, re-encrypt).
+     Rename `webhook_secret_v2` back to
      `webhook_secret` so the next rotation starts from a clean
      state.
   The signature verifier's dual-secret mode is the enabling
@@ -2092,25 +2122,28 @@ mitigate" but "things to keep watching as we build".
 
 ### 8.2 Operational complexity we don't fully understand yet
 
-- **Celery backlog under burst load.** If Remedy merges 50 PRs in
-  15 minutes (end-of-sprint rush), the Celery queue may back up.
+- **Agent dispatch backlog under burst load.** If Remedy merges 50 PRs in
+  15 minutes (end-of-sprint rush), the dispatch queue may back up.
   The plan's 5.E alert on `stale_webhook_deliveries` catches it
   but we don't yet know the real distribution of Remedy's PR
   volume. **Mitigation:** the 48-hour soak (7.D) will give real
   numbers; scale worker count in config if needed.
-- **Redis availability.** Dedupe, token cache, and Celery broker
-  all depend on Redis. A Redis outage stops everything.
-  **Mitigation:** phase 6.F includes a "Redis goes down mid-task"
-  chaos scenario; the runbook documents how to fail over to a
-  secondary if it exists. **Open question:** does the rack run
-  Redis HA or a single instance?
-- **Vault unseal after a reboot.** HashiCorp Vault seals on
-  restart and requires the unseal keys. If the rack reboots
-  unexpectedly and the operator isn't immediately available to
-  unseal, the webhook receiver is down until someone intervenes.
-  **Mitigation:** Vault auto-unseal using a cloud KMS *could*
-  solve this but reintroduces a cloud dependency. **Decision
-  deferred:** discuss with operator before phase 7.B.
+- **Cache availability (dev: in-memory, prod: Redis).** During dev,
+  token cache and dedupe are in-memory — a process restart loses
+  state (acceptable: GitHub retries, dedupe rebuilds). When the rack
+  ships with Redis, an outage stops everything per C3 fail-closed.
+  **Mitigation:** phase 6.F includes a "cache down mid-task" chaos
+  scenario; the runbook documents recovery. **Open question:** when
+  the rack ships, Redis HA or single instance?
+- **Secrets unavailable after reboot.** The age private key at
+  `~/.config/sops/age/keys.txt` must be present for sops decrypt
+  to work. On cloud hosts (fly.io), this is injected via secrets
+  config. If the key is missing after a redeploy, the agent can't
+  decrypt `secrets/valor-github-app.sops.yaml` and won't start.
+  **Mitigation:** fly.io `flyctl secrets set AGE_KEY=...` persists
+  across deploys. On the rack, the key is on the encrypted disk.
+  **Decision:** add a health check that verifies decryption works
+  at startup (phase 1.D).
 
 ### 8.3 Product/review-quality risks
 
@@ -2207,7 +2240,7 @@ mitigate" but "things to keep watching as we build".
 These are flagged so the first phase-0 work includes resolving
 them:
 
-- Does Valor's existing Celery setup reuse the same Redis as
+- Does Valor's existing MontyCore async dispatch setup reuse the same Redis as
   what we want for dedupe and token cache? (If yes, fine. If
   separate, we need to decide.)
 - Does Valor have an existing Prometheus scrape? (Affects 5.B
@@ -2287,7 +2320,7 @@ Branch: valor/github-integration/phase-0/A-register-app
 Commits: (none — external task)
 Notes: App registered, app_id=123456, installation on remedy/valor-bot-test-sandbox
 confirmed (installation_id=9876543). Private key downloaded to encrypted USB,
-pending move to Vault in workstream 0.B.
+pending encryption in workstream 0.B.
 
 ---
 
@@ -2356,7 +2389,7 @@ external integration).
 | **Feature flag** | `GITHUB_INTEGRATION_ENABLED_REPOS` — controls which Remedy repos the bot acts on |
 | **Dogfood lesson** | A specific failure mode from the CNS setup session (2026-04-13) that this plan is explicitly defended against |
 | **GitHubKit** | Python SDK for GitHub API, 2026-recommended for new Python + GitHub App integrations |
-| **sops / age** | The secrets encryption tools Monty-CNS uses; not directly part of this plan but share Vault with it |
+| **sops / age** | The secrets encryption tools Monty-CNS uses; not directly part of this plan but complement the sops+age secrets flow |
 | **Rack** | The self-hosted hardware (per `docs/self-hosting.md`) where Valor production runs |
 | **Tailscale** | Private network used to front the webhook URL without exposing it to the public internet |
 
@@ -2375,7 +2408,7 @@ Documents this plan depends on or extends:
 | `docs/security/compromise-playbook.md` | CNS's general compromise playbook; the Valor runbook extends it for bot-specific incidents |
 | `docs/security/valor-scope.md` | Explicit gate on what Valor systems may NOT touch; this plan respects that gate |
 | `docs/security/disk-encryption.md` | Required on any developer machine building or operating this |
-| `docs/self-hosting.md` | Rack / Vault / Tailscale patterns this plan reuses |
+| `docs/self-hosting.md` | Rack / secrets / Tailscale patterns this plan reuses |
 | `docs/secrets-setup.md` | sops+age flow (CNS pattern, not directly used here but cultural reference) |
 | `docs/migration-valor2.md` | Historical context on what moved from valor2.0 to CNS |
 | `.github/workflows/ship-gate.yml` (valor2.0) | Existing CI matrix this plan extends with a new job |

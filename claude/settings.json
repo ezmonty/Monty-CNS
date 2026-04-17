@@ -32,6 +32,17 @@
                 ]
             }
         ],
+        "PreCompact": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/pre-compact-checkpoint.sh"
+                    }
+                ]
+            }
+        ],
         "Stop": [
             {
                 "matcher": "",
