@@ -36,13 +36,14 @@ Complete these in order. The full plan is at `docs/plans/valor-github-integratio
 
 1. Create a plaintext secrets file:
    ```bash
-   cat > /tmp/valor-github-app.yaml << SECRETS
-   private_key: |
-     $(cat ~/Downloads/valor-bot.*.private-key.pem)
-   app_id: "<APP_ID>"
-   webhook_secret: "<WEBHOOK_SECRET>"
-   installation_id: "<INSTALLATION_ID>"
-   SECRETS
+   PEM_FILE=$(ls ~/Downloads/valor-bot.*.private-key.pem)
+   {
+     echo 'private_key: |'
+     sed 's/^/  /' "$PEM_FILE"
+     echo "app_id: \"<APP_ID>\""
+     echo "webhook_secret: \"<WEBHOOK_SECRET>\""
+     echo "installation_id: \"<INSTALLATION_ID>\""
+   } > /tmp/valor-github-app.yaml
    ```
 2. Encrypt with sops:
    ```bash

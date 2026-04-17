@@ -8,6 +8,8 @@
 !.env.example
 
 # --- Auto-generated session state (PreCompact hook) ---
+CHECKPOINT.md
+docs/CHECKPOINT.md
 .claude/CHECKPOINT.md
 
 # --- Claude runtime / machine-local state ---

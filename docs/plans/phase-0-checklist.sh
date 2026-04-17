@@ -8,10 +8,10 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; NC='\033[0m'
 
 PASS=0; FAIL=0; SKIP=0; MANUAL=0
 
-pass()  { ((PASS++));   printf "${GREEN}[PASS]${NC}  %s\n" "$1"; }
-fail()  { ((FAIL++));   printf "${RED}[FAIL]${NC}  %s\n" "$1"; }
-skip()  { ((SKIP++));   printf "${YELLOW}[SKIP]${NC}  %s\n" "$1"; }
-manual(){ ((MANUAL++)); printf "${YELLOW}[MANUAL]${NC} %s\n" "$1"; }
+pass()  { ((++PASS))  || true; printf "${GREEN}[PASS]${NC}  %s\n" "$1"; }
+fail()  { ((++FAIL))  || true; printf "${RED}[FAIL]${NC}  %s\n" "$1"; }
+skip()  { ((++SKIP))  || true; printf "${YELLOW}[SKIP]${NC}  %s\n" "$1"; }
+manual(){ ((++MANUAL)) || true; printf "${YELLOW}[MANUAL]${NC} %s\n" "$1"; }
 
 WORKLOG="docs/plans/worklogs/valor-github-integration.md"
 SECRETS_FILE="secrets/valor-github-app.sops.yaml"

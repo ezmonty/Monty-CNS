@@ -825,14 +825,15 @@ any functional code is written.
   On the workstation where the `.pem` was downloaded (MUST have FDE
   enabled — verify with `fdesetup status` on macOS or equivalent):
   ```bash
-  # Create the plaintext secrets file
-  cat > /tmp/valor-github-app.yaml << SECRETS
-  private_key: |
-    $(cat ~/Downloads/valor-bot.*.private-key.pem)
-  app_id: "<from step 0.A.2>"
-  webhook_secret: "<from step 0.A.4>"
-  installation_id: "<from step 0.A.5>"
-  SECRETS
+  # Create the plaintext secrets file (sed indents PEM for YAML block scalar)
+  PEM_FILE=$(ls ~/Downloads/valor-bot.*.private-key.pem)
+  {
+    echo 'private_key: |'
+    sed 's/^/  /' "$PEM_FILE"
+    echo 'app_id: "<from step 0.A.2>"'
+    echo 'webhook_secret: "<from step 0.A.4>"'
+    echo 'installation_id: "<from step 0.A.5>"'
+  } > /tmp/valor-github-app.yaml
 
   # Encrypt with sops+age (recipients from .sops.yaml)
   sops --encrypt /tmp/valor-github-app.yaml > secrets/valor-github-app.sops.yaml
