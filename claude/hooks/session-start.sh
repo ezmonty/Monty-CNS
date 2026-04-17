@@ -31,7 +31,11 @@ if [[ "$source_kind" != "startup" ]]; then
 fi
 
 # 4. Resolve the repo root by following our own symlink back to the repo.
-hook_src="$(readlink -f "${BASH_SOURCE[0]}")"
+#    readlink -f is GNU-only; macOS ships BSD readlink without -f.
+#    Use python3 (always available on macOS) as the portable fallback.
+hook_src="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null \
+  || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "${BASH_SOURCE[0]}" 2>/dev/null \
+  || echo "${BASH_SOURCE[0]}")"
 repo_root="$(cd "$(dirname "$hook_src")/../.." && pwd)"
 
 claude_home="${CLAUDE_HOME:-$HOME/.claude}"

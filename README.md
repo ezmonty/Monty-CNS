@@ -19,11 +19,13 @@ next session on every other machine picks it up.
 | `/newmachine` slash command | Inside-session re-sync (bootstrap + secrets + MCP) |
 | Install mechanism | `bootstrap.sh` (idempotent symlinks, merge-mode for dirs) |
 | `SessionStart` hook | ✅ pulls repo, runs bootstrap, loads env, runs drop-ins |
+| `PreCompact` hook | ✅ writes CHECKPOINT.md before context compaction |
 | `Stop` hook | ✅ git-cleanliness nag |
 | Universal `PreToolUse` hooks | ✅ protects secret files + blocks destructive Bash |
-| Slash commands | **20** — generic workflow + notebook + `/newmachine` |
-| Skills | **9** — generic library, cross-project |
+| Slash commands | **21** — generic workflow + notebook + `/newmachine` + `/worklog-merge` |
+| Skills | **10** — generic library, cross-project |
 | MCP servers tracked | **3** — github, filesystem, fetch (+ `install-servers.sh`) |
+| Plans infrastructure | ✅ `docs/plans/` — phased plans, worklogs, coordination protocol |
 | Secrets (sops + age) | ✅ `activate-secrets.sh` one-command installer, tested end-to-end |
 | Self-hosting guide | ✅ plain SSH git / Forgejo / Tailscale |
 
@@ -60,17 +62,19 @@ Monty-CNS/
 ├── .gitignore                         # blocks secrets, session state, MCP runtime data
 │
 ├── claude/                            # mirrors ~/.claude — tracked, portable files only
-│   ├── settings.json                  # SessionStart + Stop + 2 PreToolUse hooks + permissions
+│   ├── settings.json                  # SessionStart + PreCompact + Stop + 2 PreToolUse hooks
 │   ├── stop-hook-git-check.sh         # Stop hook: nag about uncommitted / unpushed work
 │   ├── hooks/
 │   │   ├── session-start.sh           # SessionStart hook: pull repo, run bootstrap, load env
+│   │   ├── pre-compact-checkpoint.sh  # PreCompact hook: write CHECKPOINT.md before compaction
 │   │   └── session-start.d/
 │   │       ├── 10-decrypt-sops.sh     # drop-in: decrypt sops secrets into $CLAUDE_ENV_FILE
 │   │       └── README.md              # drop-in conventions + stubs for pass / sops
 │   ├── agents/                        # (empty; for subagent definitions)
-│   ├── commands/                      # slash commands (19 — see below)
-│   ├── skills/                        # cross-project skill library (9 — see below)
-│   │   └── README.md                  # library philosophy + community mining workflow
+│   ├── commands/                      # slash commands (21 — see below)
+│   ├── skills/                        # cross-project skill library (10 — see below)
+│   │   ├── README.md                  # library philosophy + community mining workflow
+│   │   └── distributed-worklog/       # parallel subagent worklog pattern (ported from Valor)
 │   └── mcp/                           # MCP server definitions
 │       ├── README.md                  # portable MCP config conventions
 │       ├── install-servers.sh         # reads servers/*.json + runs claude mcp add
@@ -92,14 +96,25 @@ Monty-CNS/
     ├── secrets.md                     # secrets strategy (the "why")
     ├── secrets-setup.md               # sops + age walkthrough (the "how")
     ├── migration-valor2.md            # audit log of what moved from valor2.0 and why
-    └── security/                      # security posture — threat model, playbook, classification
-        ├── README.md                  # index
-        ├── threat-model.md            # what CNS protects, what it doesn't
-        ├── classification.md          # Public / Internal / Confidential / Restricted
-        ├── where-data-lives.md        # decision tree: git, secret manager, or DB
-        ├── disk-encryption.md         # FileVault / BitLocker / LUKS — mandatory
-        ├── compromise-playbook.md     # incident response checklist
-        └── valor-scope.md             # why CNS is NOT for Valor's customer data
+    ├── security/                      # security posture — threat model, playbook, classification
+    │   ├── README.md                  # index
+    │   ├── threat-model.md            # what CNS protects, what it doesn't
+    │   ├── classification.md          # Public / Internal / Confidential / Restricted
+    │   ├── where-data-lives.md        # decision tree: git, secret manager, or DB
+    │   ├── disk-encryption.md         # FileVault / BitLocker / LUKS — mandatory
+    │   ├── compromise-playbook.md     # incident response checklist
+    │   ├── actor-model.md             # five-actor taxonomy for trust boundaries
+    │   ├── github-auth.md             # GitHub App auth flow security analysis
+    │   └── valor-scope.md             # why CNS is NOT for Valor's customer data
+    └── plans/                         # phased implementation plans + coordination
+        ├── README.md                  # plan conventions, task claim protocol, worklog format
+        ├── valor-github-integration.md          # Valor GitHub App plan (2,440 lines, 10 phases)
+        ├── valor-github-integration-runbook.md  # operational runbook skeleton
+        ├── valor-github-integration-postmortem-template.md
+        ├── phase-0-checklist.sh       # automated phase-0 exit criteria verifier
+        ├── phase-0-human-ops.md       # operator quickstart for App registration
+        └── worklogs/                  # append-only work journals
+            └── valor-github-integration.md
 ```
 
 ## Install on a new machine
@@ -222,11 +237,11 @@ you can restore your pre-CNS state if you want.
 
 ## What ships in `claude/`
 
-### Slash commands (19)
+### Slash commands (21)
 
 Each is a generic, project-agnostic workflow you can invoke with `/<name>`.
-Project-level commands override these when you're inside a project that
-defines its own `.claude/commands/<name>.md`.
+Project-level commands override these (by exact filename match) when you're
+inside a project that defines its own `.claude/commands/<name>.md`.
 
 | Command | Purpose |
 |---|---|
@@ -240,6 +255,7 @@ defines its own `.claude/commands/<name>.md`.
 | `/feature` | Feature end-to-end: plan → implement → test → PR-ready |
 | `/fix-issue` | Close a GitHub issue: read → find → fix → test → commit |
 | `/migrate` | DB schema / data / dependency migrations |
+| `/newmachine` | Inside-session re-sync: pull dotfiles, run bootstrap, activate secrets, install MCP |
 | `/note` | Quick capture to `NOTES.md` (project-scoped or `$HOME`) |
 | `/note-review` | Progressive summarization of captured notes |
 | `/pr` | Create a well-structured PR with quality checklist |
@@ -248,9 +264,10 @@ defines its own `.claude/commands/<name>.md`.
 | `/review` | Bug / security / perf / style review |
 | `/security-audit` | Focused security audit |
 | `/tdd` | Test-driven development — failing test first, then impl |
+| `/worklog-merge` | Merge distributed worklog scratch files into master worklog |
 | `/write-tests` | Write tests matching the project's existing patterns |
 
-### Skills library (9)
+### Skills library (10)
 
 Cross-project skills — loaded into context automatically when the model
 decides they're relevant. See [`claude/skills/README.md`](claude/skills/README.md)
@@ -260,6 +277,7 @@ for the library philosophy and how to add more.
 |---|---|---|
 | `adversarial-reviewer` | 3-persona hostile review (Saboteur / New Hire / Security) — breaks LLM self-review | Upstream: `alirezarezvani/claude-skills` (MIT, ekreloff). Adapted. |
 | `code-style` | Naming / structure / anti-patterns across Python, TS, Go, Rust | Rewritten from valor2.0 |
+| `distributed-worklog` | Parallel subagent scratch files → atomic merge pattern | Ported from valor2.0 Plan A |
 | `error-helper` | Systematic error triage with language-specific first-aid | Rewritten from valor2.0 |
 | `explore-codebase` | Deep investigation via forked `Explore` subagent | Rewritten from valor2.0 |
 | `git-guide` | Git workflows, conflict resolution, recovery, safety | Rewritten from valor2.0 |
@@ -275,6 +293,7 @@ for the library philosophy and how to add more.
 | `SessionStart` | `claude/hooks/session-start.sh` | async: `git pull` the dotfiles repo (10 s timeout), run `bootstrap.sh`, load `~/.claude/.env.local` into `$CLAUDE_ENV_FILE`, run every `session-start.d/*.sh` drop-in |
 | `SessionStart` drop-in | `claude/hooks/session-start.d/10-decrypt-sops.sh` | No-op unless `sops` + `age` + `~/src/Monty-CNS-Secrets` are all present. Decrypts `env.sops.yaml` into `$CLAUDE_ENV_FILE` and any file-based secrets into `~/.claude/mcp/keys/` (0600). |
 | `PreToolUse` | inline in `settings.json` | Block writes to `.env*`, `credentials`, `secrets`, `.pem`, `.key`. Block `git push --force`, `git reset --hard`, `rm -rf`, `DROP TABLE` in Bash. |
+| `PreCompact` | `claude/hooks/pre-compact-checkpoint.sh` | Write structured `CHECKPOINT.md` (branch, HEAD, recent commits, current task) before context compaction so the next session can resume. Always exits 0. Ported from Valor Plan A. |
 | `Stop` | `claude/stop-hook-git-check.sh` | Nag about uncommitted / untracked / unpushed work before the session ends |
 
 ### Settings & permissions
@@ -336,6 +355,44 @@ onboarding). The ready-to-push scaffold is at
 
 Every machine picks up changes on next session via the `SessionStart`
 hook, or manually with `git pull && ./bootstrap.sh`.
+
+## Plans and cross-repo coordination
+
+`docs/plans/` holds phased implementation plans for work that spans
+multiple milestones. Each plan has its own worklog, coordination
+protocol, and phase-gated exit criteria. See
+[`docs/plans/README.md`](docs/plans/README.md) for the full
+conventions (task claim protocol, worklog format, handoff, conflict
+resolution).
+
+### Active plans
+
+| Plan | Status | Target |
+|---|---|---|
+| [Valor GitHub Integration](docs/plans/valor-github-integration.md) | Transfer pending to valor2.0 | GitHub App for automated PR reviews, Remedy as customer zero |
+
+### Valor 2.0 bridge
+
+CNS and [valor2.0](https://github.com/ezmonty/valor2.0) are
+connected via Claude Code's merge semantics: project-level
+`.claude/` overrides the global `~/.claude/` that CNS manages.
+Valor's `BRIDGE_CONTRACT.md` (PR #6, commit 91d7b77) defines the
+shared interface across three bridges:
+
+1. **Env vars** — CNS decrypts sops secrets → `.env.local` →
+   `$CLAUDE_ENV_FILE` → Valor agents read `os.environ`
+2. **Claude Code merge** — Valor's project-specific `/review`,
+   `/pre-commit` override CNS's generic versions
+3. **MontyCore /ask** — Valor's 53 agents communicate via
+   `MontyClient.ask()`; the GitHub App plan adds a
+   `GitHubWebhookAgent` (port 8151)
+
+Two patterns were ported **from Valor back to CNS** for
+cross-project reuse:
+
+- `PreCompact` checkpoint hook — session state preservation
+- `distributed-worklog` skill + `/worklog-merge` command — parallel
+  subagent coordination without merge conflicts
 
 ## Acknowledgements
 
