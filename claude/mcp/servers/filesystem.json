@@ -14,7 +14,8 @@
       "@modelcontextprotocol/server-filesystem",
       "${HOME}/scratch",
       "${HOME}/Documents/claude-workbench",
-      "${HOME}/src/Monty-Ledger"
+      "${HOME}/src/Monty-Ledger",
+      "${MONTY_CNS_DIR:-${HOME}/src/Monty-CNS}/monty-ledger"
     ]
   },
   "secrets_required": [],
