@@ -23,9 +23,30 @@ a dedicated `WORKLOG.md`.
 
 ## Active plans
 
-| Plan | Status | Summary |
-|---|---|---|
-| [valor-github-integration.md](valor-github-integration.md) | 📋 Not started | Valor's GitHub App build — PAT → App migration, webhook handler, CI/CD integration, full QA suite, phased rollout for Remedy Reconstruction as the first customer |
+| Plan | Location | Status | Summary |
+|---|---|---|---|
+| [Valor GitHub Integration](valor/valor-github-integration.md) | `valor/` (transfer pending to valor2.0) | 📋 Not started | GitHub App build for Remedy Reconstruction |
+
+## Directory layout
+
+```
+docs/plans/
+├── README.md              ← you are here (generic conventions)
+├── valor/                 ← Valor-specific (transfers to valor2.0 when ready)
+│   ├── valor-github-integration.md
+│   ├── valor-github-integration-runbook.md
+│   ├── valor-github-integration-postmortem-template.md
+│   ├── phase-0-checklist.sh
+│   └── phase-0-human-ops.md
+└── worklogs/              ← append-only work journals
+    └── valor-github-integration.md
+```
+
+**Principle:** Plans live in the repo they describe. The Valor plan
+is staged here temporarily because CNS is where it was authored.
+Once copied to `valor2.0/docs/plans/`, replace with a one-line
+pointer. The coordination conventions below (task claim, worklog,
+handoff) are generic and stay in CNS for any project to reference.
 
 ## Conventions all plans follow
 

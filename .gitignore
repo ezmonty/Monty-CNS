@@ -7,10 +7,14 @@
 .env.*
 !.env.example
 
-# --- Auto-generated session state (PreCompact hook) ---
+# --- Auto-generated session state (PreCompact hook, /learn, /brief) ---
 CHECKPOINT.md
 docs/CHECKPOINT.md
 .claude/CHECKPOINT.md
+LEARNINGS.md
+.claude/LEARNINGS.md
+briefings/
+.claude/briefings/
 
 # --- Claude runtime / machine-local state ---
 # These live under ~/.claude on each host and should stay local.
