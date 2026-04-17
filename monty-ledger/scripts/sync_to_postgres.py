@@ -37,16 +37,43 @@ def get_vault_root():
         return Path(sys.argv[1])
     return Path(__file__).resolve().parent.parent
 
+def _safe_date(val):
+    if val is None:
+        return None
+    s = str(val).strip()
+    if s.startswith('<%') or not s or not s[0].isdigit():
+        return None
+    return s
+
 def compute_hash(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 def extract_wikilinks(content: str) -> list[str]:
-    return WIKILINK_RE.findall(content)
+    return list(set(WIKILINK_RE.findall(content)))
+
+FM_RE = re.compile(r'^---\s*\n(.*?)\n---\s*\n', re.DOTALL)
 
 def parse_note(path: Path, vault_root: Path) -> dict:
     text = path.read_text(encoding="utf-8")
-    post = frontmatter.loads(text)
-    fm = dict(post.metadata)
+    try:
+        post = frontmatter.loads(text)
+        fm = dict(post.metadata)
+        body = post.content
+    except Exception:
+        fm = {}
+        m = FM_RE.match(text)
+        if m:
+            for line in m.group(1).splitlines():
+                if ':' in line and not line.startswith('#'):
+                    key, _, val = line.partition(':')
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if val.startswith('[') and val.endswith(']'):
+                        val = [v.strip().strip('"').strip("'") for v in val[1:-1].split(',')]
+                    fm[key] = val
+            body = text[m.end():]
+        else:
+            body = text
     rel_path = str(path.relative_to(vault_root))
     title = fm.get("summary") or path.stem.replace(" - ", " — ")
     return {
@@ -62,13 +89,13 @@ def parse_note(path: Path, vault_root: Path) -> dict:
         "confidence": fm.get("confidence"),
         "origin_type": fm.get("origin_type"),
         "frontmatter": json.dumps(fm, default=str),
-        "content": post.content,
+        "content": body,
         "content_hash": compute_hash(text),
-        "created_at": fm.get("created"),
-        "updated_at": fm.get("updated"),
+        "created_at": _safe_date(fm.get("created")),
+        "updated_at": _safe_date(fm.get("updated")),
         "tags": fm.get("tags", []) or [],
         "persona_mix": fm.get("persona_mix", []) or [],
-        "links": extract_wikilinks(post.content),
+        "links": extract_wikilinks(body),
     }
 
 def sync(vault_root: Path, db_url: str):
