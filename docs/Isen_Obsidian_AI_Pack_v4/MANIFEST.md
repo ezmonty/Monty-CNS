@@ -1,0 +1,105 @@
+# Manifest
+
+## Package
+- name: Isen_Obsidian_AI_Pack_v4
+- file_count: 98
+
+## Files
+- `.obsidian/app.json`
+- `.obsidian/community-plugins.json`
+- `.obsidian/core-plugins.json`
+- `.obsidian/daily-notes.json`
+- `.obsidian/templates.json`
+- `.obsidian/workspace.json`
+- `00_Inbox/README.md`
+- `01_Daily/README.md`
+- `02_Projects/Project - Vault Implementation.md`
+- `02_Projects/README.md`
+- `03_Profiles/Profile - Identity and Context.md`
+- `03_Profiles/Profile - Leadership.md`
+- `03_Profiles/Profile - Life Arc.md`
+- `03_Profiles/Profile - Reasoning and Decision.md`
+- `03_Profiles/Profile - Revision and Feedback.md`
+- `03_Profiles/Profile - Roles and Modes.md`
+- `03_Profiles/Profile - Values and Duty.md`
+- `03_Profiles/Profile - Voice and Writing.md`
+- `03_Profiles/Profile - Work and Execution.md`
+- `03_Profiles/README.md`
+- `04_Decisions/Decision - Keep Internal Notes Machine First - 2026-04-15.md`
+- `04_Decisions/Decision - Obsidian as System of Record - 2026-04-15.md`
+- `04_Decisions/Decision - Preserve Raw and Output Layers - 2026-04-15.md`
+- `04_Decisions/README.md`
+- `05_Leadership/Leadership - Duty of Care.md`
+- `05_Leadership/Leadership - Followership as Foundation.md`
+- `05_Leadership/Leadership - Team Energy.md`
+- `05_Leadership/README.md`
+- `06_Writing/Quote Record - Leadership Sacred Responsibility.md`
+- `06_Writing/README.md`
+- `06_Writing/Writing Rule - Cut Adjective Stacks.md`
+- `06_Writing/Writing Rule - Preserve the Distinction.md`
+- `06_Writing/Writing Rule - Start on the Thought.md`
+- `06_Writing/Writing Rule - Track Quote Provenance.md`
+- `07_Life_Arcs/Life Arc - Marine Formation.md`
+- `07_Life_Arcs/Life Arc - Owner Operator Years.md`
+- `07_Life_Arcs/Life Arc - Return to School with Lived Context.md`
+- `07_Life_Arcs/README.md`
+- `08_Knowledge/Knowledge - Contradiction Tracking.md`
+- `08_Knowledge/Knowledge - Evidence Units.md`
+- `08_Knowledge/README.md`
+- `09_Assets/README.md`
+- `10_Dashboards/Home.md`
+- `10_Dashboards/README.md`
+- `10_Dashboards/Review Queue.md`
+- `11_Templates/README.md`
+- `11_Templates/Template - Daily Note.md`
+- `11_Templates/Template - Decision Note.md`
+- `11_Templates/Template - Evidence Unit.md`
+- `11_Templates/Template - Profile Note.md`
+- `11_Templates/Template - Quote Record.md`
+- `11_Templates/Template - Shadow Reference.md`
+- `12_Audit/Adversarial Test - BASB and PARA.md`
+- `12_Audit/Fresh Eyes Review - Final.md`
+- `12_Audit/Gaps and Next Moves.md`
+- `12_Audit/README.md`
+- `12_Audit/Rubric - Final Adherence.md`
+- `12_Audit/Rubric - Vault Quality.md`
+- `12_Audit/Team Audit Plan.md`
+- `12_Audit/Team Audit Report.md`
+- `13_Pods/Pod - Academic Output.md`
+- `13_Pods/Pod - Executive Negotiation.md`
+- `13_Pods/Pod - Reflection and Pattern Work.md`
+- `13_Pods/README.md`
+- `14_Lenses/Lens - Leadership.md`
+- `14_Lenses/Lens - Strategy.md`
+- `14_Lenses/Lens - Therapy and Pattern.md`
+- `14_Lenses/README.md`
+- `15_Agent_Prompts/README.md`
+- `15_Agent_Prompts/audit-vault.md`
+- `15_Agent_Prompts/build-packet.md`
+- `15_Agent_Prompts/create-decision-note.md`
+- `15_Agent_Prompts/extract-evidence.md`
+- `15_Agent_Prompts/update-profile.md`
+- `15_Agent_Prompts/writing-voice-check.md`
+- `16_Security/External Hidden Lane Setup.md`
+- `16_Security/README.md`
+- `AGENT_WORKFLOWS.md`
+- `AI_USAGE.md`
+- `CLAUDE.md`
+- `CLAUDE_SETUP_CHECKLIST.md`
+- `HIDDEN_LANE_POLICY.md`
+- `HISTORY_IMPORT_WORKFLOW.md`
+- `INSTALL_AND_BOOTSTRAP.md`
+- `MANIFEST.md`
+- `MODE_AND_ACCESS_MODEL.md`
+- `NAMING_CONVENTIONS.md`
+- `PARA_AND_OVERLAY.md`
+- `README.md`
+- `START_HERE.md`
+- `TAG_DICTIONARY.md`
+- `VAULT_RULES.md`
+- `exports/example-packet/packet-index.md`
+- `scripts/bootstrap_vault.py`
+- `scripts/build_manifest.py`
+- `scripts/init_external_hidden_lane.py`
+- `scripts/split_conversations_json.py`
+- `scripts/validate_frontmatter.py`
