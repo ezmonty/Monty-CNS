@@ -1,3 +1,7 @@
+---
+description: Database schema, data, and dependency migrations.
+---
+
 Help with database and code migrations — schema changes, data transforms, dependency upgrades.
 
 Migration: $ARGUMENTS (describe what's changing)

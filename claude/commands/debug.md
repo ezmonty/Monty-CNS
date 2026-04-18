@@ -1,3 +1,7 @@
+---
+description: Analyze and fix an error or bug.
+---
+
 Analyze and fix an error or bug.
 
 Error: $ARGUMENTS (paste the error, traceback, or describe the symptom)

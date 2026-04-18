@@ -1,3 +1,7 @@
+---
+description: Create a well-structured pull request with quality checks.
+---
+
 Create a well-structured pull request with quality checks.
 
 Target: $ARGUMENTS (base branch, or empty for main/master)

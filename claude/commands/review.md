@@ -1,3 +1,7 @@
+---
+description: Code review for bugs, security issues, performance, and best practices.
+---
+
 Review code for bugs, security issues, performance, and best practices.
 
 Target: $ARGUMENTS (file path, directory, or "staged" for git staged changes)

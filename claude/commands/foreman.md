@@ -1,3 +1,7 @@
+---
+description: Single-screen operational status rollup with PROCEED/ESCALATE/STOP verdict.
+---
+
 Single-screen operational status rollup — everything you need to know about the current session state in one view.
 
 ## Steps

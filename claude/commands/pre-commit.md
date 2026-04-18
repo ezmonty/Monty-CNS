@@ -1,3 +1,7 @@
+---
+description: Run tests, lint, build, and secrets scan before committing.
+---
+
 Run all verification checks before committing — tests, lint, build, secrets scan.
 
 ## Steps (run ALL in order — stop on first failure)

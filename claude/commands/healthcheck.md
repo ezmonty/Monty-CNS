@@ -1,3 +1,7 @@
+---
+description: Run the CNS healthcheck script and report results.
+---
+
 Run the CNS healthcheck and report results.
 
 ## Steps

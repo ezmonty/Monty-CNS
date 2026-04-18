@@ -1,3 +1,7 @@
+---
+description: Smart commit with conventional format and secret-file exclusion.
+---
+
 Smart commit workflow — stage, verify, and commit with a well-structured message.
 
 Target: $ARGUMENTS (optional commit message hint, or empty for auto-generated)

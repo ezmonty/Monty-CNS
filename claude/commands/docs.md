@@ -1,3 +1,7 @@
+---
+description: Generate or update docstrings, JSDoc, and API documentation.
+---
+
 Generate or update documentation — docstrings, JSDoc, API docs, module docs.
 
 Target: $ARGUMENTS (file path, directory, module name, or "api" for full API docs)

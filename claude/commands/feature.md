@@ -1,3 +1,7 @@
+---
+description: Build a feature end-to-end — plan, implement, test, prepare for review.
+---
+
 Build a feature end-to-end — plan, implement, test, and prepare for review.
 
 Feature: $ARGUMENTS

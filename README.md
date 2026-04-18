@@ -23,9 +23,10 @@ next session on every other machine picks it up.
 | `Stop` hook | ✅ git-cleanliness nag |
 | `PostToolUse` hook | ✅ syntax gate — auto-checks py/js/ts/go/rb/sh/json/yaml after edits |
 | Universal `PreToolUse` hooks | ✅ protects secret files + blocks destructive Bash |
-| Slash commands | **22** — generic workflow + notebook + `/newmachine` + `/worklog-merge` + `/learn` |
-| Skills | **10** — generic library, cross-project |
+| Slash commands | **27** — generic workflow + notebook + `/newmachine` + `/worklog-merge` + `/learn` |
+| Skills | **12** — generic library, cross-project |
 | MCP servers tracked | **5** — github, filesystem, fetch, memory, brave-search |
+| Monty-Ledger MCP | ✅ 7 tools, Postgres-backed, access-enforced |
 | Plans infrastructure | ✅ `docs/plans/` — phased plans, worklogs, coordination protocol |
 | Secrets (sops + age) | ✅ `activate-secrets.sh` one-command installer, tested end-to-end |
 | Self-hosting guide | ✅ plain SSH git / Forgejo / Tailscale |
@@ -72,8 +73,8 @@ Monty-CNS/
 │   │       ├── 10-decrypt-sops.sh     # drop-in: decrypt sops secrets into $CLAUDE_ENV_FILE
 │   │       └── README.md              # drop-in conventions + stubs for pass / sops
 │   ├── agents/                        # (empty; for subagent definitions)
-│   ├── commands/                      # slash commands (22 — see below)
-│   ├── skills/                        # cross-project skill library (10 — see below)
+│   ├── commands/                      # slash commands (27 — see below)
+│   ├── skills/                        # cross-project skill library (12 — see below)
 │   │   ├── README.md                  # library philosophy + community mining workflow
 │   │   └── distributed-worklog/       # parallel subagent worklog pattern (ported from Valor)
 │   └── mcp/                           # MCP server definitions
@@ -240,7 +241,7 @@ you can restore your pre-CNS state if you want.
 
 ## What ships in `claude/`
 
-### Slash commands (22)
+### Slash commands (27)
 
 Each is a generic, project-agnostic workflow you can invoke with `/<name>`.
 Project-level commands override these (by exact filename match) when you're

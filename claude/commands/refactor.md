@@ -1,3 +1,7 @@
+---
+description: Safe refactor with test verification at every step.
+---
+
 Safely refactor code with test verification at every step.
 
 Target: $ARGUMENTS (file path, description, or "suggest" for recommendations)

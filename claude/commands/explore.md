@@ -1,3 +1,7 @@
+---
+description: Subagent-driven codebase exploration — find files, trace flows, map dependencies.
+---
+
 Deep codebase exploration — trace how a feature works, map data flows and dependencies.
 
 Topic: $ARGUMENTS

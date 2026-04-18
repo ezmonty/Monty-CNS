@@ -1,3 +1,7 @@
+---
+description: Write tests matching the project's existing patterns and frameworks.
+---
+
 Write tests for existing code — detect the framework and follow project patterns.
 
 Target: $ARGUMENTS (file path, module name, or function name)

@@ -1,3 +1,7 @@
+---
+description: Test-driven development — write failing tests first, then implement.
+---
+
 Test-driven development — write failing tests first, then implement until they pass.
 
 Feature: $ARGUMENTS

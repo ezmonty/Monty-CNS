@@ -1,3 +1,7 @@
+---
+description: Deep-dive explanation of specified code.
+---
+
 Provide a deep-dive explanation of the specified code.
 
 Target: $ARGUMENTS (file path, function name, module, or concept)

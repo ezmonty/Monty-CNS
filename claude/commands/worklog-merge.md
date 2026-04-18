@@ -1,3 +1,7 @@
+---
+description: Merge distributed worklog scratch files into the master worklog.
+---
+
 Merge distributed worklog scratch files into the master worklog.
 
 Target: $ARGUMENTS (unused)

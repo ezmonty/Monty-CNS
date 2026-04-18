@@ -1,3 +1,7 @@
+---
+description: Audit dependencies for CVEs, outdated versions, and weak pinning.
+---
+
 Audit dependencies for security vulnerabilities, outdated packages, and version pinning.
 
 Target: $ARGUMENTS ("python", "node", "go", or empty for auto-detect)

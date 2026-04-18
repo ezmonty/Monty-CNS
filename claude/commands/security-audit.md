@@ -1,3 +1,7 @@
+---
+description: Focused security audit of specified code.
+---
+
 Perform a security audit on the specified code.
 
 Target: $ARGUMENTS (file path, directory, or "all")

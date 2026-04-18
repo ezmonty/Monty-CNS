@@ -1,3 +1,7 @@
+---
+description: Close a GitHub issue — read, find, fix, test, commit.
+---
+
 Fix a GitHub issue end-to-end — read it, find the code, fix it, test it, commit it.
 
 Issue: $ARGUMENTS (issue number, URL, or description)

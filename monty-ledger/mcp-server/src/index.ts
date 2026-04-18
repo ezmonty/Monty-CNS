@@ -6,7 +6,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import pg from "pg";
-import { z } from "zod";
+
 import { writeFile, mkdir } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
 
@@ -534,7 +534,8 @@ async function handleCreateInboxNote(params: Record<string, unknown>) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-  const filename = `${today}_${slug}.md`;
+  const suffix = Math.random().toString(16).slice(2, 6);
+  const filename = `${today}_${slug}-${suffix}.md`;
   const vaultPath = `00_Inbox/${filename}`;
 
   const safeTitle = title.replace(/"/g, '\\"').replace(/\n/g, ' ');
