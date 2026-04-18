@@ -390,7 +390,7 @@ async function handleBuildPacket(params: Record<string, unknown>) {
   if (podName) {
     const podResult = await safeQuery(
       `SELECT path, title, content, tags FROM notes
-       WHERE type = 'pod' AND (LOWER(title) = LOWER($1) OR path ILIKE '%' || $1 || '%')
+       WHERE (type = 'pod' OR path LIKE '13_Pods/%') AND (LOWER(title) = LOWER($1) OR path ILIKE '%' || $1 || '%')
        LIMIT 1`,
       [podName]
     );
@@ -470,7 +470,7 @@ async function handleGetPod(params: Record<string, unknown>) {
 
   const result = await safeQuery(
     `SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, content, created_at FROM notes
-     WHERE type = 'pod' AND (LOWER(title) = LOWER($1) OR path ILIKE '%' || $1 || '%')
+     WHERE (type = 'pod' OR path LIKE '13_Pods/%') AND (LOWER(title) = LOWER($1) OR path ILIKE '%' || $1 || '%')
      LIMIT 1`,
     [name]
   );
@@ -575,6 +575,16 @@ async function handleCreateInboxNote(params: Record<string, unknown>) {
       ],
       isError: true,
     };
+  }
+
+  // Insert tags into the tags table
+  if (tags.length > 0) {
+    for (const tag of tags) {
+      await safeQuery(
+        "INSERT INTO tags (note_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [vaultPath, tag]
+      );
+    }
   }
 
   return {
