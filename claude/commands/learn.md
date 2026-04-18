@@ -1,5 +1,5 @@
 ---
-description: Capture a verified, generalizable finding into a persistent LEARNINGS.md knowledge base.
+description: Capture a verified, generalizable finding into the Monty-Ledger vault.
 ---
 
 # /learn — Structured knowledge capture
@@ -22,26 +22,33 @@ If `$ARGUMENTS` is non-empty, use it as the insight. If empty, ask: "What did yo
 - **Confidence:** infer from language, or ask if ambiguous. Values: `verified` (tested/proven), `suspected` (likely but untested), `anecdotal` (heard/observed once).
 - **Context:** one sentence about where/how this was discovered.
 
-### 3. Format entry
+### 3. Format as short title + body
 
-```markdown
-### <short title>
-- **Project:** <project>
-- **Tags:** <tag1>, <tag2>
-- **Confidence:** <verified|suspected|anecdotal>
-- **Date:** <YYYY-MM-DD>
-- **Context:** <where discovered>
+Title: a concise phrase (e.g., "JWT RS256 needs full cert chain").
+Body: 1-3 sentences explaining the insight.
 
-<the insight, 1-3 sentences>
+### 4. Write to vault (primary path)
+
+Try the `create_inbox_note` MCP tool first:
+```
+create_inbox_note(
+  title: "<short title>",
+  content: "**Project:** <project>\n**Tags:** <tags>\n**Confidence:** <confidence>\n**Context:** <context>\n\n<insight body>",
+  type: "learning",
+  tags: [<tag1>, <tag2>, <project>]
+)
 ```
 
-### 4. Append to LEARNINGS.md
+This writes a markdown file to `monty-ledger/00_Inbox/` AND inserts into Postgres with `origin_type: ai-proposed`, `confidence: 2`, `status: review`.
 
-- If `~/.claude/LEARNINGS.md` exists, append the entry after a `---` separator.
-- Otherwise, create `~/.claude/LEARNINGS.md` with header `# Learnings\n\nPersistent knowledge captured across sessions.\n\n---\n` then append.
+### 5. Fallback (if MCP unavailable)
 
-**Never overwrite.** Always append.
+If the `create_inbox_note` tool is not available or fails:
+- Detect vault path: check `$PWD/monty-ledger/00_Inbox/`, then `~/src/Monty-Ledger/00_Inbox/`
+- If found, write the file directly with frontmatter (type: learning, origin_type: ai-proposed, confidence: 2, status: review, access: private, truth_layer: working)
+- If no vault found, append to `~/.claude/LEARNINGS.md` as last resort
 
-### 5. Confirm
+### 6. Confirm
 
-Print the formatted entry, then: **"Saved to LEARNINGS.md. N total entries."** (count `###` headings in the file).
+Print the formatted entry, then: **"Saved to vault inbox."** (or "Saved to LEARNINGS.md (vault unavailable).")
+Report which path was taken so the user knows.

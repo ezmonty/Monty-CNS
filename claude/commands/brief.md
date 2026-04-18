@@ -40,10 +40,27 @@ Generate a structured briefing so the next session can pick up where this one le
 <files to read, concepts to understand, gotchas>
 ```
 
-### 3. Save the briefing
+### 3. Query recent learnings (if vault MCP available)
 
-Write to `~/src/Monty-Ledger/00_Inbox/Brief - <project> - <date>.md` (or `monty-ledger/00_Inbox/`). Frontmatter:
+If `query_notes` MCP tool is available, query recent learnings:
+```
+query_notes(type: "learning", limit: 5)
+```
+Add a "Recent Learnings" section to the briefing with the results.
 
+### 4. Save the briefing
+
+**Primary (MCP):** Use `create_inbox_note` MCP tool:
+```
+create_inbox_note(
+  title: "Brief - <project> - <date>",
+  content: <the full briefing markdown>,
+  type: "brief",
+  tags: ["brief", "<project>"]
+)
+```
+
+**Fallback (direct file):** Detect vault path — check `$PWD/monty-ledger/00_Inbox/`, then `~/src/Monty-Ledger/00_Inbox/`. Write with frontmatter:
 ```yaml
 ---
 type: brief
@@ -51,9 +68,13 @@ status: active
 origin_type: ai-generated
 access: private
 truth_layer: working
+tags: [brief, <project>]
 ---
 ```
 
-### 4. Confirm
+**Last resort:** If no vault found, write to `~/.claude/briefings/<project>-<date>.md` and warn user.
 
-Print: **"Briefing saved. Next session will see this automatically."**
+### 5. Confirm
+
+Print: **"Briefing saved to vault inbox."** (or fallback location).
+Report which path was taken.

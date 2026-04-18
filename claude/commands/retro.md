@@ -23,9 +23,17 @@ Synthesize what happened this session into a structured retrospective note.
 
 ### 3. Write retrospective note
 
-- If Monty-Ledger MCP server is available, use `create_inbox_note` tool.
-- Otherwise write to `~/src/Monty-Ledger/00_Inbox/Retro - <date>.md` (or `monty-ledger/00_Inbox/` if in-repo).
-- Frontmatter:
+**Primary (MCP):** Use `create_inbox_note` MCP tool:
+```
+create_inbox_note(
+  title: "Retro - <project> - <date>",
+  content: <the three sections + stats>,
+  type: "retro",
+  tags: ["retro", "<project>"]
+)
+```
+
+**Fallback (direct file):** If MCP fails, detect vault path — check `$PWD/monty-ledger/00_Inbox/`, then `~/src/Monty-Ledger/00_Inbox/`. Write with frontmatter:
 
 ```yaml
 ---
