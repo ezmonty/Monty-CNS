@@ -4,6 +4,9 @@ Topic: $ARGUMENTS
 
 ## Investigation Steps
 
+### 0. Query vault for related knowledge
+If the `search_content` MCP tool is available, search for notes related to the exploration topic. If `build_packet` is available and a relevant pod exists, build a context packet. Include any vault findings as background context for the exploration.
+
 ### 1. Find ALL Relevant Files
 Search broadly — don't stop at first match:
 - Search by name, keywords, related terms, abbreviations

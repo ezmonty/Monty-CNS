@@ -2,6 +2,9 @@ Review code for bugs, security issues, performance, and best practices.
 
 Target: $ARGUMENTS (file path, directory, or "staged" for git staged changes)
 
+## Step 0: Load quality rubric
+If `RUBRIC.md` exists at repo root or `.claude/RUBRIC.md`, walk through each dimension in the rubric. If the `list_profiles` MCP tool is available, load the work execution profile for project conventions context.
+
 ## What to Check
 
 ### 1. Correctness

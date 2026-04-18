@@ -20,7 +20,7 @@ Capture: branch, short SHA, ahead/behind, uncommitted (staged+unstaged), untrack
 
 **d. Checkpoint** — If `CHECKPOINT.md` exists, extract `Current task:` and `Next steps:` lines.
 
-**e. Vault** — Check `monty-ledger/00_Inbox/` and `~/src/Monty-Ledger/00_Inbox/`. Count files. If neither exists: "No vault found."
+**e. Vault** — If the `query_notes` MCP tool is available, use `query_notes` with a path filter for '00_Inbox/%' to get the inbox count and recent notes, instead of counting files on disk. Otherwise, check `monty-ledger/00_Inbox/` and `~/src/Monty-Ledger/00_Inbox/`. Count files. If neither exists: "No vault found."
 
 ### 2. Render Status Card
 ```
