@@ -2,7 +2,7 @@
 # SessionStart drop-in: detect vault and load pod context into $CLAUDE_ENV_FILE.
 # No-ops silently if vault not found (Principle 4: degrade, don't break).
 
-set -euo pipefail
+set -uo pipefail
 
 [[ -n "${CLAUDE_ENV_FILE:-}" ]] || exit 0
 
@@ -27,6 +27,7 @@ fi
 
 # 3. Write vault root so other tools can find it.
 printf 'export VAULT_ROOT="%s"\n' "$vault" >> "$CLAUDE_ENV_FILE"
+printf 'export LEDGER_VAULT_ROOT="%s"\n' "$vault" >> "$CLAUDE_ENV_FILE"
 
 # 4. Try to find a matching pod for the current project.
 pods_dir="$vault/13_Pods"

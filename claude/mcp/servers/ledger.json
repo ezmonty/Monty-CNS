@@ -4,9 +4,10 @@
   "scope": "user",
   "config": {
     "command": "npx",
-    "args": ["tsx", "/home/user/Monty-CNS/monty-ledger/mcp-server/src/index.ts"],
+    "args": ["tsx", "${MONTY_CNS_DIR:-${HOME}/src/Monty-CNS}/monty-ledger/mcp-server/src/index.ts"],
     "env": {
-      "LEDGER_DATABASE_URL": "${LEDGER_DATABASE_URL}"
+      "LEDGER_DATABASE_URL": "${LEDGER_DATABASE_URL}",
+      "LEDGER_VAULT_ROOT": "${MONTY_CNS_DIR:-${HOME}/src/Monty-CNS}/monty-ledger"
     }
   },
   "secrets_required": [
