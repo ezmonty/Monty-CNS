@@ -272,7 +272,7 @@ inside a project that defines its own `.claude/commands/<name>.md`.
 | `/worklog-merge` | Merge distributed worklog scratch files into master worklog |
 | `/write-tests` | Write tests matching the project's existing patterns |
 
-### Skills library (10)
+### Skills library (12)
 
 Cross-project skills — loaded into context automatically when the model
 decides they're relevant. See [`claude/skills/README.md`](claude/skills/README.md)
@@ -288,8 +288,10 @@ for the library philosophy and how to add more.
 | `git-guide` | Git workflows, conflict resolution, recovery, safety | Rewritten from valor2.0 |
 | `h-scale` | Capability Honesty Scale H1–H5 for rating readiness | Rewritten from valor2.0 |
 | `karpathy-principles` | The 4 coding principles (Think / Simple / Surgical / Goals) | CNS original, attributed to Karpathy |
+| `monty-ecosystem` | Monty architecture: 4 repos, 4 categories, merge semantics, wiring | CNS original |
 | `perf-audit` | Backend + frontend + DB perf checklist with measurement-first | Rewritten from valor2.0 |
 | `test-writer` | Framework detection, layer selection, multi-lang templates | Rewritten from valor2.0 |
+| `vault-access-model` | Monty-Ledger vault access patterns and trust boundaries | CNS original |
 
 ### Hooks
 

@@ -351,6 +351,8 @@ say "$(bold "Docs:")"
 say "  · $(bold "$DIR/README.md")"
 say "  · $(bold "$DIR/docs/secrets-setup.md")   (sops + age walkthrough)"
 say "  · $(bold "$DIR/docs/self-hosting.md")    (run your own git remote)"
+say "  · $(bold "$DIR/docs/WIRING.md")       (command → MCP → datastore map)"
+say "  · $(bold "$DIR/docs/HANDOFF.md")      (punch list + session summary)"
 say
 
 exit 0

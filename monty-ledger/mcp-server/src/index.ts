@@ -6,7 +6,6 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import pg from "pg";
-
 import { writeFile, mkdir } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
 
@@ -498,7 +497,7 @@ async function handleGetPod(params: Record<string, unknown>) {
   return { content: [{ type: "text", text: output }] };
 }
 
-async function handleListProfiles() {
+async function handleListProfiles(_params: Record<string, unknown>) {
   const result = await safeQuery(
     `SELECT path, title, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, confidence, role_mode, truth_layer, status, created_at
      FROM notes
@@ -593,7 +592,7 @@ async function handleCreateInboxNote(params: Record<string, unknown>) {
       content: [
         {
           type: "text",
-          text: `File written to ${vaultPath} but Postgres insert failed: ${insertResult.error}`,
+          text: `File written but not indexed. Run /sync to fix. (${insertResult.error})`,
         },
       ],
       isError: true,
@@ -602,12 +601,12 @@ async function handleCreateInboxNote(params: Record<string, unknown>) {
 
   // Insert tags into the tags table
   if (tags.length > 0) {
-    for (const tag of tags) {
-      await safeQuery(
-        "INSERT INTO tags (note_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        [vaultPath, tag]
-      );
-    }
+    const tagValues = tags.map((_, i) => `($1, $${i + 2})`).join(", ");
+    const tagParams = [vaultPath, ...tags];
+    await safeQuery(
+      `INSERT INTO tags (note_id, tag) VALUES ${tagValues} ON CONFLICT DO NOTHING`,
+      tagParams
+    );
   }
 
   return {
@@ -635,7 +634,7 @@ const HANDLERS: Record<string, ToolHandler> = {
   search_content: handleSearchContent,
   build_packet: handleBuildPacket,
   get_pod: handleGetPod,
-  list_profiles: handleListProfiles as unknown as ToolHandler,
+  list_profiles: handleListProfiles,
   create_inbox_note: handleCreateInboxNote,
 };
 
