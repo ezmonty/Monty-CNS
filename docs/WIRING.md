@@ -20,6 +20,7 @@ COMMAND         MCP TOOL              DATA STORE          STATUS
 /review      →  list_profiles      →  Postgres (read)     WIRED
 /research    →  brave_web_search   →  web                 WIRED
              →  search_content     →  Postgres (read)     WIRED
+             →  query_notes        →  Postgres (read)     WIRED
              →  create_inbox_note  →  vault + Postgres    WIRED
 ```
 
@@ -43,7 +44,8 @@ TOOL                  CALLERS                     STATUS
 ──────────────────    ────────────────────────    ──────
 create_inbox_note     /learn, /retro, /brief,     ✓ 4 callers
                       /research
-query_notes           /debug, /brief, /foreman    ✓ 3 callers
+query_notes           /debug, /brief, /foreman,   ✓ 4 callers
+                      /research
 search_content        /explore, /research         ✓ 2 callers
 build_packet          /explore                    ✓ 1 caller
 list_profiles         /review                     ✓ 1 caller

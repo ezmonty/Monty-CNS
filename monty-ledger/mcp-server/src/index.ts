@@ -8,7 +8,7 @@ import {
 import pg from "pg";
 import { z } from "zod";
 import { writeFile, mkdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 
 const { Pool } = pg;
 
@@ -323,10 +323,12 @@ async function handleQueryNotes(params: Record<string, unknown>) {
 
 async function handleGetNote(params: Record<string, unknown>) {
   const path = params.path as string;
+  const accessMax = (params.access_max as string) ?? "private";
+  const maxLevel = accessLevel(accessMax);
 
   const result = await safeQuery(
-    "SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, confidence, role_mode, truth_layer, status, content, created_at FROM notes WHERE path = $1",
-    [path]
+    `SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, confidence, role_mode, truth_layer, status, content, created_at FROM notes WHERE path = $1 AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= $2`,
+    [path, maxLevel]
   );
 
   if (result.error) {
@@ -467,12 +469,14 @@ async function handleBuildPacket(params: Record<string, unknown>) {
 
 async function handleGetPod(params: Record<string, unknown>) {
   const name = params.name as string;
+  const escapedName = name.replace(/%/g, '\\%').replace(/_/g, '\\_');
 
   const result = await safeQuery(
     `SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, content, created_at FROM notes
-     WHERE (type = 'pod' OR path LIKE '13_Pods/%') AND (LOWER(title) = LOWER($1) OR path ILIKE '%' || $1 || '%')
+     WHERE (type = 'pod' OR path LIKE '13_Pods/%') AND (LOWER(title) = LOWER($1) OR path ILIKE '%' || $2 || '%')
+       AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= 1
      LIMIT 1`,
-    [name]
+    [name, escapedName]
   );
 
   if (result.error) {
@@ -517,6 +521,14 @@ async function handleCreateInboxNote(params: Record<string, unknown>) {
   const type = params.type as string;
   const tags = params.tags as string[];
 
+  const MAX_CONTENT_SIZE = 100_000;
+  if (content.length > MAX_CONTENT_SIZE) {
+    return {
+      content: [{ type: "text", text: `Rejected: content exceeds ${MAX_CONTENT_SIZE} chars` }],
+      isError: true,
+    };
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const slug = title
     .toLowerCase()
@@ -525,9 +537,12 @@ async function handleCreateInboxNote(params: Record<string, unknown>) {
   const filename = `${today}_${slug}.md`;
   const vaultPath = `00_Inbox/${filename}`;
 
+  const safeTitle = title.replace(/"/g, '\\"').replace(/\n/g, ' ');
+  const safeTags = tags.map(t => t.replace(/"/g, '').replace(/[\[\]\n]/g, ''));
+
   const frontmatter = [
     "---",
-    `title: "${title}"`,
+    `title: "${safeTitle}"`,
     `type: ${type}`,
     `origin_type: ai-proposed`,
     `confidence: 2`,
@@ -535,14 +550,21 @@ async function handleCreateInboxNote(params: Record<string, unknown>) {
     `access: private`,
     `truth_layer: working`,
     `created: ${today}`,
-    `tags: [${tags.map((t) => `"${t}"`).join(", ")}]`,
+    `tags: [${safeTags.map((t) => `"${t}"`).join(", ")}]`,
     "---",
   ].join("\n");
 
   const fullContent = `${frontmatter}\n\n${content}\n`;
 
-  // Write the markdown file to the vault
-  const filePath = join(VAULT_ROOT, vaultPath);
+  // Write the markdown file to the vault (with path traversal guard)
+  const filePath = resolve(join(VAULT_ROOT, vaultPath));
+  const resolvedRoot = resolve(VAULT_ROOT);
+  if (!filePath.startsWith(resolvedRoot)) {
+    return {
+      content: [{ type: "text", text: "Rejected: path escapes vault root" }],
+      isError: true,
+    };
+  }
   try {
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, fullContent, "utf-8");
