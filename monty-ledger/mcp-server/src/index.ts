@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createHash } from "crypto";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -549,11 +550,11 @@ async function handleCreateInboxNote(params: Record<string, unknown>) {
 
   // Insert into Postgres
   const insertResult = await safeQuery(
-    `INSERT INTO notes (path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, confidence, status, truth_layer, content, created_at, origin_type)
+    `INSERT INTO notes (id, path, title, type, access, confidence, status, truth_layer, content, content_hash, created_at, origin_type)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (path) DO UPDATE SET content = EXCLUDED.content, title = EXCLUDED.title
      RETURNING path`,
-    [vaultPath, title, type, 'private', 2, 'review', 'working', content, today, 'ai-proposed', require('crypto').createHash('sha256').update(content).digest('hex').slice(0,16), vaultPath]
+    [vaultPath, vaultPath, title, type, 'private', 2, 'review', 'working', content, createHash('sha256').update(content).digest('hex').slice(0,16), today, 'ai-proposed']
   );
 
   if (insertResult.error) {
