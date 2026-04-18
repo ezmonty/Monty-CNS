@@ -86,6 +86,26 @@ References
 - **Client-facing claims require H4 minimum.** Anything H3 or below needs an explicit caveat on the page.
 - **Regulatory / compliance claims require H5.** Anything less is fraud waiting to happen.
 
+## Limitations and Provenance
+
+The H-Scale is a **custom heuristic**, not a published standard.
+It draws loosely from CMM/CMMI (SEI), TRL (NASA), and the Dreyfus
+skill model, but is not any of those frameworks formally. It has:
+- No inter-rater reliability testing
+- No peer review or publication
+- Arbitrary axes and levels (why 4 axes? why 5 levels?)
+- No measure of value, impact, user experience, or architecture quality
+
+It is useful as a **thinking tool** that forces honesty about gaps.
+It is NOT useful as proof of quality — the proof is the tests, the
+code, and the docs. The rating is just a summary.
+
+Always state when reporting: "H-Scale is a custom heuristic, not
+a formal standard. Rated by [who] on [date] with [context]."
+
+See: `monty-ledger/04_Decisions/Decision - H-Scale Adoption and
+Limitations - 2026-04-18.md` for the full analysis.
+
 ## When to Use
 
 - Before shipping a feature to customers.
