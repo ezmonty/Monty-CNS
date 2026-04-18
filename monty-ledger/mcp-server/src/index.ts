@@ -39,21 +39,27 @@ if (!DATABASE_URL) {
   );
 }
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  max: 5,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
-});
+let pool: pg.Pool | null = null;
 
-pool.on("error", (err) => {
-  console.error("Unexpected Postgres pool error:", err.message);
-});
+if (DATABASE_URL) {
+  pool = new Pool({
+    connectionString: DATABASE_URL,
+    max: 5,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+  });
+  pool.on("error", (err) => {
+    console.error("Unexpected Postgres pool error:", err.message);
+  });
+}
 
 async function safeQuery(
   text: string,
   params: unknown[] = []
 ): Promise<{ rows: Record<string, unknown>[]; error?: string }> {
+  if (!pool) {
+    return { rows: [], error: "LEDGER_DATABASE_URL not set — Postgres unavailable" };
+  }
   try {
     const result = await pool.query(text, params);
     return { rows: result.rows as Record<string, unknown>[] };
@@ -275,8 +281,10 @@ async function handleQueryNotes(params: Record<string, unknown>) {
   }
 
   if (tags && tags.length > 0) {
-    conditions.push(`EXISTS (SELECT 1 FROM tags t2 WHERE t2.note_id = notes.id AND t2.tag = ANY($${paramIdx}))`);
+    conditions.push(`(SELECT count(DISTINCT t2.tag) FROM tags t2 WHERE t2.note_id = notes.id AND t2.tag = ANY($${paramIdx})) = $${paramIdx + 1}`);
     values.push(tags);
+    paramIdx++;
+    values.push(tags.length);
     paramIdx++;
   }
 

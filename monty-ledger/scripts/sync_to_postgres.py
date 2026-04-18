@@ -108,7 +108,11 @@ def sync(vault_root: Path, db_url: str):
     for row in cur.fetchall():
         existing[row[0]] = row[1]
 
-    md_files = sorted(vault_root.rglob("*.md"))
+    EXCLUDE_DIRS = {'node_modules', 'mcp-server', 'db', '.git', '__pycache__', 'dist'}
+    md_files = sorted(
+        f for f in vault_root.rglob("*.md")
+        if not any(ex in f.parts for ex in EXCLUDE_DIRS)
+    )
     synced = skipped = 0
 
     for f in md_files:

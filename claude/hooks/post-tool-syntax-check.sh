@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse hook: syntax-check after Edit/Write
 # Warns on error (exit 0 always — PostToolUse cannot block).
-set -euo pipefail
+set -uo pipefail
 
 file=$(python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('file_path',''))" 2>/dev/null) || exit 0
 [[ -z "$file" || ! -f "$file" ]] && exit 0
