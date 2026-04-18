@@ -113,6 +113,10 @@ const TOOLS = [
           type: "string",
           description: "Filter by role_mode field.",
         },
+        path_filter: {
+          type: "string",
+          description: "SQL LIKE pattern for path filtering (e.g. '00_Inbox/%', '13_Pods/%').",
+        },
         limit: {
           type: "number",
           description: "Max number of results. Default: 20.",
@@ -257,6 +261,7 @@ async function handleQueryNotes(params: Record<string, unknown>) {
   const accessMax = (params.access_max as string) ?? "private";
   const confidenceMin = params.confidence_min as number | undefined;
   const roleMode = params.role_mode as string | undefined;
+  const pathFilter = params.path_filter as string | undefined;
   const limit = Math.min((params.limit as number) ?? 20, 200);
 
   const maxLevel = accessLevel(accessMax);
@@ -296,6 +301,12 @@ async function handleQueryNotes(params: Record<string, unknown>) {
   if (roleMode) {
     conditions.push(`role_mode = $${paramIdx}`);
     values.push(roleMode);
+    paramIdx++;
+  }
+
+  if (pathFilter) {
+    conditions.push(`path LIKE $${paramIdx}`);
+    values.push(pathFilter);
     paramIdx++;
   }
 

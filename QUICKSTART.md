@@ -21,9 +21,11 @@ Claude Code works immediately after this step — commands, skills, and hooks ar
 
 2. **Install MCP servers** (web search, vault memory):
    ```bash
-   ./install-mcp.sh
+   ~/.claude/mcp/install-servers.sh
    ```
-   Now you have API keys, web search, and vault-backed memory available in every session.
+   Registers github, filesystem, fetch, memory, brave-search, and ledger MCP
+   servers with Claude Code. Requires `claude` CLI to be installed.
+   Now you have API keys, web search, and vault-backed knowledge available.
 
 ## First session — try these
 
