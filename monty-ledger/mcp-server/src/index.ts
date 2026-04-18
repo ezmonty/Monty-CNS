@@ -26,6 +26,11 @@ function accessLevel(access: string): number {
   return ACCESS_LEVELS[access.toLowerCase()] ?? 1;
 }
 
+// Server-side maximum — caps all caller requests regardless of what they ask for.
+// Default: "private" (level 1). To unlock secret/hidden, set LEDGER_ACCESS_CEILING
+// explicitly in sops secrets or environment.
+const SERVER_ACCESS_CEILING = accessLevel(process.env.LEDGER_ACCESS_CEILING ?? "private");
+
 // ---------------------------------------------------------------------------
 // Database
 // ---------------------------------------------------------------------------
@@ -264,7 +269,7 @@ async function handleQueryNotes(params: Record<string, unknown>) {
   const pathFilter = params.path_filter as string | undefined;
   const limit = Math.min((params.limit as number) ?? 20, 200);
 
-  const maxLevel = accessLevel(accessMax);
+  const maxLevel = Math.min(accessLevel(accessMax), SERVER_ACCESS_CEILING);
 
   const conditions: string[] = [];
   const values: unknown[] = [];
@@ -334,7 +339,7 @@ async function handleQueryNotes(params: Record<string, unknown>) {
 async function handleGetNote(params: Record<string, unknown>) {
   const path = params.path as string;
   const accessMax = (params.access_max as string) ?? "private";
-  const maxLevel = accessLevel(accessMax);
+  const maxLevel = Math.min(accessLevel(accessMax), SERVER_ACCESS_CEILING);
 
   const result = await safeQuery(
     `SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, confidence, role_mode, truth_layer, status, content, created_at FROM notes WHERE path = $1 AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= $2`,
@@ -367,7 +372,7 @@ async function handleSearchContent(params: Record<string, unknown>) {
   const query = params.query as string;
   const accessMax = (params.access_max as string) ?? "private";
   const limit = Math.min((params.limit as number) ?? 10, 100);
-  const maxLevel = accessLevel(accessMax);
+  const maxLevel = Math.min(accessLevel(accessMax), SERVER_ACCESS_CEILING);
 
   const sql = `
     SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, confidence,
@@ -430,8 +435,8 @@ async function handleBuildPacket(params: Record<string, unknown>) {
         const profileResult = await safeQuery(
           `SELECT path, title, content FROM notes
            WHERE (title = ANY($1) OR path = ANY($1))
-             AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= 1`,
-          [defaultLoads]
+             AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= $2`,
+          [defaultLoads, SERVER_ACCESS_CEILING]
         );
 
         if (!profileResult.error && profileResult.rows.length > 0) {
@@ -453,10 +458,10 @@ async function handleBuildPacket(params: Record<string, unknown>) {
             substring(content FROM 1 FOR 800) AS excerpt
      FROM notes
      WHERE similarity(content, $1) > 0.05
-       AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= 1
+       AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= $2
      ORDER BY sim DESC
      LIMIT 15`,
-    [question]
+    [question, SERVER_ACCESS_CEILING]
   );
 
   if (!evidenceResult.error && evidenceResult.rows.length > 0) {
@@ -484,9 +489,9 @@ async function handleGetPod(params: Record<string, unknown>) {
   const result = await safeQuery(
     `SELECT path, title, type, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, access, content, created_at FROM notes
      WHERE (type = 'pod' OR path LIKE '13_Pods/%') AND (LOWER(title) = LOWER($1) OR path ILIKE '%' || $2 || '%')
-       AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= 1
+       AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= $3
      LIMIT 1`,
-    [name, escapedName]
+    [name, escapedName, SERVER_ACCESS_CEILING]
   );
 
   if (result.error) {
@@ -513,8 +518,9 @@ async function handleListProfiles(_params: Record<string, unknown>) {
     `SELECT path, title, (SELECT COALESCE(array_agg(t.tag), ARRAY[]::text[]) FROM tags t WHERE t.note_id = notes.id) AS tags, confidence, role_mode, truth_layer, status, created_at
      FROM notes
      WHERE type = 'profile'
-       AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= 1
-     ORDER BY title`
+       AND CASE LOWER(access) WHEN 'public' THEN 0 WHEN 'private' THEN 1 WHEN 'secret' THEN 2 WHEN 'hidden' THEN 3 ELSE 1 END <= $1
+     ORDER BY title`,
+    [SERVER_ACCESS_CEILING]
   );
 
   if (result.error) {

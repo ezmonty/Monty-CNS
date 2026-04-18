@@ -53,3 +53,14 @@ NotebookLM stays secondary because it is stronger as a packet analyzer than as a
 
 Use Obsidian as the durable second-brain layer.
 Use packet exports for outside AI analysis when needed.
+
+## Update — 2026-04-18
+
+Round table refinement: **Obsidian is the GUI, not the engine.** The
+architecture is markdown + frontmatter + Postgres + MCP. Obsidian is
+one rendering surface — the vault works identically when consumed by
+Claude Code, Valor agents, or direct file reads. If you never browse
+manually, Obsidian is optional.
+
+With LLMs consuming markdown natively, the "second brain" doesn't need
+a dedicated app — agents with file access ARE the interface.
