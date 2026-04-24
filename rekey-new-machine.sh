@@ -34,12 +34,53 @@ done
 
 ensure_tools() {
   if command -v sops >/dev/null && command -v age >/dev/null; then return 0; fi
-  echo "==> installing sops + age (delegating to activate-secrets.sh installer)"
-  # activate-secrets.sh has an install_tools function; simplest way to reuse
-  # its logic is a one-shot invocation that exits after phase 1.
-  # We just call it with --yes and trust the user can Ctrl-C if they don't want the rest.
-  echo "    tip: run ./activate-secrets.sh directly if you want the full flow."
-  exit 1
+  echo "==> installing sops + age (direct binary from GitHub releases)"
+
+  local kernel arch
+  kernel="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  case "$(uname -m)" in
+    x86_64)        arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) echo "unsupported arch: $(uname -m)" >&2; return 1 ;;
+  esac
+  case "$kernel" in
+    linux|darwin) ;;
+    *) echo "unsupported kernel: $kernel — run ./activate-secrets.sh instead" >&2; return 1 ;;
+  esac
+
+  local prefix
+  if [[ -w /usr/local/bin ]]; then
+    prefix=/usr/local/bin
+  elif command -v sudo >/dev/null; then
+    prefix=/usr/local/bin
+    local SUDO=sudo
+  else
+    prefix="$HOME/.local/bin"
+    mkdir -p "$prefix"
+  fi
+  local SUDO="${SUDO:-}"
+
+  if ! command -v sops >/dev/null; then
+    echo "   downloading sops ($kernel-$arch)..."
+    curl -fsSLo /tmp/sops "https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.$kernel.$arch"
+    $SUDO install -m 0755 /tmp/sops "$prefix/sops"
+    rm -f /tmp/sops
+  fi
+
+  if ! command -v age >/dev/null; then
+    echo "   downloading age ($kernel-$arch)..."
+    curl -fsSLo /tmp/age.tgz "https://github.com/FiloSottile/age/releases/download/v1.2.0/age-v1.2.0-$kernel-$arch.tar.gz"
+    tar -xzf /tmp/age.tgz -C /tmp
+    $SUDO install -m 0755 /tmp/age/age        "$prefix/age"
+    $SUDO install -m 0755 /tmp/age/age-keygen "$prefix/age-keygen"
+    rm -rf /tmp/age /tmp/age.tgz
+  fi
+
+  export PATH="$prefix:$PATH"
+  command -v sops >/dev/null && command -v age >/dev/null || {
+    echo "install failed" >&2; return 1;
+  }
+  echo "   installed: sops $(sops --version | head -1 | awk '{print $2}'), age at $(command -v age)"
 }
 
 gen_key() {

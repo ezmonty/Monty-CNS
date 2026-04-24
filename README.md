@@ -9,6 +9,10 @@ work box, home server) so every Claude Code session everywhere starts from
 the same baseline — and the moment you improve something on one machine, the
 next session on every other machine picks it up.
 
+> **🗺 Looking for the fleet?** See [`MACHINES.md`](./MACHINES.md) — canonical
+> list of hosts (currently `valor-vm` running Valor 2.0), services, public
+> endpoints, test-run commands, and the new-machine onboarding flow.
+
 ## Status
 
 | Item | State |
