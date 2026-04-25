@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "valor-vm": {
+      "type": "sse",
+      "url": "https://api.remedy-reconstruction.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer 94fec0ab0e12adc8356690aa8cd32b4009b0b068012c53c8e4e3f00aca88ed96"
+      }
+    }
+  }
+}
