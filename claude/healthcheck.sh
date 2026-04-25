@@ -22,13 +22,16 @@ check_symlink() {
 # == 1. Symlinks =============================================================
 echo ""; echo "=== Symlinks ==="
 check_symlink "~/.claude/settings.json" "$HOME/.claude/settings.json"
-check_symlink "~/.claude/hooks/session-start.sh" "$HOME/.claude/hooks/session-start.sh"
-check_symlink "~/.claude/hooks/pre-compact-checkpoint.sh" "$HOME/.claude/hooks/pre-compact-checkpoint.sh"
-check_symlink "~/.claude/hooks/post-tool-syntax-check.sh" "$HOME/.claude/hooks/post-tool-syntax-check.sh"
-cmd_count=$(find "$HOME/.claude/commands" -type f -o -type l 2>/dev/null | wc -l)
+check_symlink "~/.claude/hooks/" "$HOME/.claude/hooks"
+# Individual hook files live inside the hooks/ symlink — verify they exist
+for _hk in session-start.sh pre-compact-checkpoint.sh post-tool-syntax-check.sh; do
+  if [ -f "$HOME/.claude/hooks/$_hk" ]; then pass "~/.claude/hooks/$_hk present"
+  else fail "~/.claude/hooks/$_hk missing"; fi
+done
+cmd_count=$(find -L "$HOME/.claude/commands" -maxdepth 1 \( -type f -o -type l \) 2>/dev/null | wc -l)
 if [ "$cmd_count" -ge 20 ]; then pass "~/.claude/commands/ has $cmd_count files (>=20)"
 else fail "~/.claude/commands/ has $cmd_count files (need >=20)"; fi
-skill_dirs=$(find "$HOME/.claude/skills" -mindepth 1 -maxdepth 1 -type d -o -type l 2>/dev/null | wc -l)
+skill_dirs=$(find -L "$HOME/.claude/skills" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | wc -l)
 if [ "$skill_dirs" -ge 10 ]; then pass "~/.claude/skills/ has $skill_dirs dirs (>=10)"
 else fail "~/.claude/skills/ has $skill_dirs dirs (need >=10)"; fi
 
