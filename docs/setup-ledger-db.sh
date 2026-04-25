@@ -36,6 +36,17 @@ sudo -u postgres psql -d "$DB_NAME" -f "$CNS_DIR/monty-ledger/db/schema.sql"
 echo "Applying views..."
 sudo -u postgres psql -d "$DB_NAME" -f "$CNS_DIR/monty-ledger/db/seed.sql"
 
+# 3b. Grant the app user full access (schema is applied by postgres superuser,
+#     so tables are owned by postgres — valor needs explicit grants to read/write).
+echo "Granting permissions to $DB_USER..."
+sudo -u postgres psql -d "$DB_NAME" -c "
+  GRANT ALL ON ALL TABLES IN SCHEMA public TO ${DB_USER};
+  GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};
+  GRANT USAGE ON SCHEMA public TO ${DB_USER};
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};
+"
+
 # 4. Install Python deps if needed
 if ! python3 -c "import frontmatter" 2>/dev/null; then
   echo "Installing python-frontmatter..."
