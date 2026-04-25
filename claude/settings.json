@@ -5,6 +5,7 @@
       "Skill"
     ]
   },
+  "model": "sonnet",
   "hooks": {
     "SessionStart": [
       {
@@ -71,6 +72,6 @@
       }
     ]
   },
-  "skipDangerousModePermissionPrompt": true,
-  "effortLevel": "medium"
+  "effortLevel": "xhigh",
+  "skipDangerousModePermissionPrompt": true
 }
