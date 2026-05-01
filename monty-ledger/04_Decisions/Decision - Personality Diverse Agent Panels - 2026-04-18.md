@@ -1,13 +1,15 @@
 ---
 title: "Personality-diverse agent panels for genuine creative tension"
-type: learning
-origin_type: ai-proposed
+type: decision
+origin_type: ai-assisted
 confidence: 3
-status: review
+status: active
 access: private
-truth_layer: working
+truth_layer: canonical
+role_mode: strategist
 created: 2026-04-18
-tags: ["agents", "personality", "creativity", "methodology", "Monty-CNS"]
+updated: 2026-05-01
+tags: ["strategy", "operations"]
 ---
 
 **Project:** Monty-CNS / Valor
@@ -34,6 +36,30 @@ The tension between them produces output none would produce alone.
 - The access model's `role_mode` field already supports role-based behavior (self/owner/executive/veteran/student/strategist)
 - Valor's `provider="agent:<name>"` mesh dispatch could route the same task to 4 differently-configured agents
 - The `/adversarial-review` skill is a degenerate case of this pattern (3 hostile personas, same evaluation criteria)
+
+**Big Five applied to agent design:**
+
+| Trait | High | Low | Best use |
+|---|---|---|---|
+| Openness | Alternatives, questions premise, novel approaches | Stays in scope, follows convention | Brainstorming, architecture |
+| Conscientiousness | Every edge case, flags incomplete, over-documents | Ships fast, accepts good enough | QA review, pre-deploy gate |
+| Extraversion | Surfaces proactively, verbose | Answers only what's asked | Report generation |
+| Agreeableness | Validates, finds merit | Challenges, devil's advocate | Decision review |
+| Neuroticism | Every failure mode and risk | Optimistic, assumes best case | Security, risk assessment |
+
+**DISC mapped to agent roles:**
+
+| Type | Orientation | Agent role |
+|---|---|---|
+| D (Dominance) | Results, speed, bottom line | Executive summary — "done or not?" |
+| I (Influence) | Ideas, possibilities | Brainstorm — "what else?" |
+| S (Steadiness) | Process, consistency | SOP auditor — "are we following the pattern?" |
+| C (Conscientiousness) | Accuracy, correctness | Gate agent — "prove it works" |
+
+**Same role, different personality (worked example):**
+PM-D: "Are we on track? Cut everything not on the critical path."
+PM-C: "Walk me through every checklist item. What's the evidence each gate passed?"
+Same role. Completely different output. Different blind spots surfaced.
 
 **Research threads:**
 - Jordan Peterson: Big Five personality and creative output

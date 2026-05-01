@@ -32,3 +32,9 @@ quote_status: exact
 ## Chosen path
 
 ## Review later
+
+## Sources
+
+<!-- Wikilinks to Research notes that informed this decision — adopted AND rejected -->
+<!-- Format: - [[Research - Topic - Date]] — verdict: adopted/rejected — one-line reason -->
+

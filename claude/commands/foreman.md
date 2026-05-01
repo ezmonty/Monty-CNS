@@ -24,7 +24,12 @@ Capture: branch, short SHA, ahead/behind, uncommitted (staged+unstaged), untrack
 
 **d. Checkpoint** — If `CHECKPOINT.md` exists, extract `Current task:` and `Next steps:` lines.
 
-**e. Vault** — If the `query_notes` MCP tool is available, use `query_notes` with a path filter for '00_Inbox/%' to get the inbox count and recent notes, instead of counting files on disk. Otherwise, check `monty-ledger/00_Inbox/` and `~/src/Monty-Ledger/00_Inbox/`. Count files. If neither exists: "No vault found."
+**e. Vault** — If the `query_notes` MCP tool is available, use `query_notes` with a path filter for '00_Inbox/%' to get the inbox count and recent notes, instead of counting files on disk. Otherwise, check `monty-ledger/00_Inbox/` and `~/src/Monty-CNS/monty-ledger/00_Inbox/`. Count files. If neither exists: "No vault found."
+
+**f. Vault backlog** — Check `~/.claude/LEARNINGS.md`. If it exists and has content beyond the header:
+- Count entries (lines starting with `##`)
+- Surface as: "Vault backlog: N entries in LEARNINGS.md — drain with /learn or promote manually"
+- These are vault captures that failed to reach the vault (fallback path) and need to be re-run through /learn when the vault is available.
 
 ### 2. Render Status Card
 ```
@@ -35,6 +40,7 @@ Tests:      PASS (12 min ago) ✓  |  or: STALE (2h ago) ⚠  |  or: NO RUN ✗
 Worklog:    Status: done — "Phase 2.A JWT signer"
 Checkpoint: "Implementing auth middleware"
 Inbox:      3 notes pending review
+Backlog:    2 entries in LEARNINGS.md (vault unreachable during capture — drain with /learn)
 
 === VERDICT ===
 PROCEED  — all clear, keep working
