@@ -21,6 +21,28 @@ Synthesize what happened this session into a structured retrospective note.
 - **Learned:** generalizable insights discovered. Call `/learn` for each one.
 - **Next time:** what should be different, what's unfinished, what was harder than expected.
 
+### 2.5. Confidence prompt (REQUIRED before save)
+
+Before writing the retro note, present the proposed metadata to the
+human and prompt for confidence override. Format:
+
+```
+About to save retro: "Retro - <project> - <date>"
+Confidence default: 2 (working — AI-proposed; unverified)
+
+Override? Reply with "default" or 1-5:
+  1  speculative   could be wrong; capture as hypothesis
+  2  working       AI-proposed default; unverified
+  3  supported     evidence in-body; AI ceiling without human verify
+  4  verified      you've reviewed and confirmed (HUMAN-ONLY)
+  5  canonical     load-bearing / foundational (HUMAN-ONLY)
+```
+
+Same rules as `/learn` step 3.5 — AI must NOT auto-promote to 4 or 5.
+The same prompt should also fire once per discovered learning before
+calling `/learn` so each one gets a confidence opportunity, not a
+batch default.
+
 ### 3. Write retrospective note
 
 **Primary (MCP):** Use `create_inbox_note` MCP tool:

@@ -52,4 +52,14 @@ if [[ -n "$current_branch" ]]; then
   fi
 fi
 
+# Pending vault reviews — surface but don't block.
+# Count rows in PENDING_REVIEWS.md (table rows referencing monty-ledger paths).
+pending_file="${HOME}/.claude/PENDING_REVIEWS.md"
+if [[ -f "$pending_file" ]]; then
+  pending_count=$(awk '/^\| `monty-ledger\// {n++} END {print n+0}' "$pending_file")
+  if [[ "$pending_count" -gt 0 ]]; then
+    echo "Pending vault reviews: $pending_count note(s) with open questions awaiting your input. See ~/.claude/PENDING_REVIEWS.md." >&2
+  fi
+fi
+
 exit 0

@@ -57,6 +57,34 @@ tags: ["tag1", "tag2"]
 <1-3 sentence insight body — direct, structured, retrievable per VAULT_RULES.md Rule 7>
 ```
 
+### 3.5. Confidence prompt (REQUIRED before save)
+
+Before writing the note, present the proposed metadata to the human and
+prompt for confidence override. Format:
+
+```
+About to save: "<title>"
+Tags: <tag1>, <tag2>
+Confidence default: 2 (working — AI-proposed; unverified)
+
+Override? Reply with "default" or 1-5:
+  1  speculative   could be wrong; capture as hypothesis
+  2  working       AI-proposed default; unverified
+  3  supported     evidence in-body; AI ceiling without human verify
+  4  verified      you've reviewed and confirmed (HUMAN-ONLY)
+  5  canonical     load-bearing / foundational (HUMAN-ONLY)
+```
+
+Rules:
+- If the human replies with a number, use that level.
+- If "default" or no response, save at 2.
+- AI MUST NOT auto-promote to 4 or 5 without an explicit human number reply.
+- If the human says "skip" or "don't save", abort the write.
+- The canonical scale definition is being formalized in
+  `00_Inbox/2026-05-01_whitepaper_confidence-and-credence-scales-for-ai-vault-systems.md`
+  — once that note is human-promoted to 4+, it becomes authoritative and
+  this prompt should mirror its final wording.
+
 ### 4. Write to vault (primary path)
 
 Try the `create_inbox_note` MCP tool first:
