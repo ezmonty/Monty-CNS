@@ -23,6 +23,7 @@ a starting point, not a finish line.
 | [actor-model.md](actor-model.md) | Five-actor taxonomy (human end-user, human operator, AI agent, service/bot, external integration), identity / auth / authz / audit per actor type, how AI agents inherit human permissions minus destructive operations, anti-patterns like shared credentials |
 | [compromise-playbook.md](compromise-playbook.md) | Step-by-step incident response: laptop stolen, token leaked, key compromised |
 | [valor-scope.md](valor-scope.md) | What this system is NOT for: customer data, regulated records, anything in Valor's database layer |
+| [airlock-doctrine.md](airlock-doctrine.md) | Cross-pointer to the canonical AI-agent trust airlock doctrine in valor2.0; nine-layer architecture summary |
 
 ## One-sentence summaries
 
