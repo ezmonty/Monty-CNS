@@ -13,6 +13,17 @@ if [[ "$stop_hook_active" = "true" ]]; then
   exit 0
 fi
 
+# Pending vault reviews — informational, surfaces BEFORE the git checks
+# so the human sees pending notes even when there are also uncommitted
+# changes (the git path exit 2's before reaching the bottom of the script).
+pending_file="${HOME}/.claude/PENDING_REVIEWS.md"
+if [[ -f "$pending_file" ]]; then
+  pending_count=$(awk '/^\| `monty-ledger\// {n++} END {print n+0}' "$pending_file")
+  if [[ "$pending_count" -gt 0 ]]; then
+    echo "Pending vault reviews: $pending_count note(s) with open questions awaiting your input. See ~/.claude/PENDING_REVIEWS.md." >&2
+  fi
+fi
+
 # Check if we're in a git repository - bail if not
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
   exit 0
@@ -49,16 +60,6 @@ if [[ -n "$current_branch" ]]; then
       echo "Branch '$current_branch' has $unpushed unpushed commit(s) and no remote branch. Please push these changes to the remote repository. $no_pr_reminder" >&2
       exit 2
     fi
-  fi
-fi
-
-# Pending vault reviews — surface but don't block.
-# Count rows in PENDING_REVIEWS.md (table rows referencing monty-ledger paths).
-pending_file="${HOME}/.claude/PENDING_REVIEWS.md"
-if [[ -f "$pending_file" ]]; then
-  pending_count=$(awk '/^\| `monty-ledger\// {n++} END {print n+0}' "$pending_file")
-  if [[ "$pending_count" -gt 0 ]]; then
-    echo "Pending vault reviews: $pending_count note(s) with open questions awaiting your input. See ~/.claude/PENDING_REVIEWS.md." >&2
   fi
 fi
 
