@@ -9,7 +9,7 @@ removes the row here.
 
 | Note | Created | Open Q | Owner |
 |---|---|---|---|
-| `monty-ledger/00_Inbox/2026-05-01_whitepaper_confidence-and-credence-scales-for-ai-vault-systems.md` | 2026-05-01 | 5 | human |
+(empty — no notes currently awaiting human review)
 
 ## How to close
 

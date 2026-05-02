@@ -3,8 +3,9 @@ title: "Confidence and credence scales for AI-curated knowledge vaults"
 type: whitepaper
 origin_type: ai-proposed
 confidence: 2
-status: review-pending
-open_questions: 5
+status: accepted
+open_questions: 0
+human_resolved_at: 2026-05-02
 access: private
 truth_layer: working
 created: 2026-05-01
@@ -99,10 +100,19 @@ The vault uses one field today. Splitting into three is technically clean but op
 ### 4.1. Promotion rules
 
 - 1 → 2: AI satisfies itself the claim is reasoned, even if speculative remains an option. Self-promotion allowed.
-- 2 → 3: requires evidence in-body (tests, command output, citations). AI may self-promote IF the evidence is present in the note.
-- 3 → 4: HUMAN ONLY. Reads the note, agrees, confirms. AI may not self-promote.
-- 4 → 5: HUMAN ONLY. Note has been referenced and stood up for some duration (suggested: 30+ days), or is explicitly designated foundational.
-- Demotion: any user can demote any level for cause. AI may demote on contradiction with a higher-confidence note (and should flag this).
+- 2 → 3: requires evidence in-body (tests, command output, citations). AI may self-promote IF the evidence is present in the note. AI re-runs of the test in a *separate* session count as supporting evidence here.
+- 3 → 4: HUMAN ONLY. Reads the note, agrees, confirms. **AI Type-1 re-runs do not promote past 3.** (See §4.3 — the 3→4 gate is Kahneman Type-2 thinking, which only humans currently practice in this system.)
+- 4 → 5: 30+ days without contradiction in the vault, OR a second independent human ratifier (collapses the soak requirement). HUMAN ONLY in either case.
+- **Demotion is NOT automatic.** When a higher-confidence note contradicts a lower-confidence one, the AI flags the contradiction and the human decides: synthesize the two notes into one, OR explicitly reject one (which becomes its demotion). Demotion is the *outcome* of human deliberation, never a mechanic the AI executes alone.
+
+### 4.3. Type-1 vs Type-2 verification (q5)
+
+Kahneman's two-systems framing maps onto the 3→4 gate cleanly:
+
+- **Type-1 (System 1, fast/automatic):** AI re-running a smoke test, pattern-matching against a regex catalog, asserting "I've seen this before, it works." Cheap, repeatable, pattern-dominant. **Caps at confidence 3.**
+- **Type-2 (System 2, slow/deliberate):** A reviewer weighing alternatives, considering edge cases, asking "what would falsify this?" before agreeing. Effortful, opinionated, alternative-aware. **Required for 3 → 4.**
+
+This is why the AI ceiling sits at 3: AI in this system is exclusively Type-1. When the AI re-tests in a separate session, that's Type-1-twice, not Type-2. The promotion to verified requires the deliberative pause — which is what "human review" really means here. If AI someday gains Type-2 capability (deliberation that genuinely entertains alternatives, not just a longer pattern-match), this clause should be revisited.
 
 ### 4.2. Constraints baked in
 
@@ -122,16 +132,18 @@ The vault uses one field today. Splitting into three is technically clean but op
 
 ## 6. Open Questions
 
-Before this whitepaper is promoted to 4 (verified), resolve each below.
-Tick the box, write `→ Resolution: <answer>. Decided <date>.` inline.
-When all five close, status auto-flips to `accepted` and the row is
-removed from `~/.claude/PENDING_REVIEWS.md`.
+All five resolved 2026-05-02 by the human in chat. Resolutions inline.
 
-- [ ] q1: **Time-survived as a 4→5 trigger** — is "30 days without contradiction" the right threshold, or does it need explicit human re-affirmation?
-- [ ] q2: **Multi-tenant or solo?** Right now there's one human reviewer (the user). When a second person ratifies a note, does that count as a 4→5 jumpstart, or stay at 4?
-- [ ] q3: **Confidence on `type: profile` notes** — most existing profiles are at 4. Is that right (verified once and stable) or should they be 5 (canonical identity, load-bearing)?
-- [ ] q4: **Demotion mechanic** — when a higher-confidence note contradicts a lower-confidence one, what's the workflow? Auto-demote the lower? Flag both for review?
-- [ ] q5: **AI-internal re-verification as a 3→4 path** — should re-running a smoke test in a separate session be enough to promote, or does promotion always require human?
+- [x] q1: **Time-survived as a 4→5 trigger** — is "30 days without contradiction" the right threshold, or does it need explicit human re-affirmation?
+      → Resolution: 30 days without contradiction is the trigger threshold; auto-eligible for 4→5 consideration after that. Decided 2026-05-02.
+- [x] q2: **Multi-tenant or solo?** Right now there's one human reviewer (the user). When a second person ratifies a note, does that count as a 4→5 jumpstart, or stay at 4?
+      → Resolution: a second independent human ratifier IS a 4→5 jumpstart (collapses the 30-day soak requirement). Two-eye verification = canonical-eligible. Decided 2026-05-02.
+- [x] q3: **Confidence on `type: profile` notes** — most existing profiles are at 4. Is that right (verified once and stable) or should they be 5 (canonical identity, load-bearing)?
+      → Resolution: stay at 4. Profiles are verified-stable but not canonical (the 5 tier is reserved for things load-bearing on system behavior, not personal identity description). Decided 2026-05-02.
+- [x] q4: **Demotion mechanic** — when a higher-confidence note contradicts a lower-confidence one, what's the workflow? Auto-demote the lower? Flag both for review?
+      → Resolution: NO auto-demotion. Contradictions trigger debate — synthesize the two notes into one, OR explicitly reject one. Demotion is the *outcome* of human deliberation, not an automatic mechanic. AI flags the contradiction; human decides. Decided 2026-05-02.
+- [x] q5: **AI-internal re-verification as a 3→4 path** — should re-running a smoke test in a separate session be enough to promote, or does promotion always require human?
+      → Resolution: NO. Frame as Kahneman's Type-1 vs Type-2 thinking. AI re-runs are Type-1 (fast, automatic, pattern-matched) and cannot promote past 3. Type-2 (slow, deliberate, weighing alternatives) is what 3→4 requires, and only humans currently practice Type-2 in this system. AI Type-1 evidence supports staying at 3; promotion to 4 needs human Type-2 review. Decided 2026-05-02.
 
 ## 7. Recommendation
 
@@ -143,6 +155,7 @@ removed from `~/.claude/PENDING_REVIEWS.md`.
 ## 8. Sources
 
 - Kent, S. (1964). *Words of Estimative Probability.* CIA Studies in Intelligence.
+- Kahneman, D. (2011). *Thinking, Fast and Slow.* FSG. (Type-1 vs Type-2 — basis for §4.3.)
 - Tetlock, P. & Gardner, D. (2015). *Superforecasting: The Art and Science of Prediction.* Crown.
 - Ahrens, S. (2017). *How to Take Smart Notes.*
 - Matuschak, A. *Evergreen notes / epistemic status conventions.* https://notes.andymatuschak.org
@@ -154,11 +167,9 @@ removed from `~/.claude/PENDING_REVIEWS.md`.
 
 ## 9. Status note
 
-This document is itself confidence: 2 (working). It is the AI's first draft. The user is invited to:
+**2026-05-02 update:** All five §6 open questions resolved by the human. Resolutions inline; clauses 4.1, 4.3, and the new Type-1/Type-2 framing reflect the answers. `status` flipped to `accepted`; `confidence` still at 2 (working draft) — promotion to 4 requires an explicit human "promote to 4" decision (per the very rule this whitepaper proposes).
 
-- Read in full
-- Mark up open questions in §6
-- Promote to 4 if accepted as-is, OR
-- Demote / rewrite / reject and propose alternative
-
-Once promoted to 4, the relevant clauses of §4 should be copied verbatim into `VAULT_RULES.md` under a new "Confidence Scale" heading, and the `/learn` and `/retro` skills should be updated to mirror the final wording.
+When the human promotes this to 4:
+- Clauses 4.1 (promotion rules), 4.2 (constraints), 4.3 (Type-1 vs Type-2) should be copied verbatim into `VAULT_RULES.md` under a new "Confidence Scale" heading.
+- `/learn` and `/retro` skill prompts should mirror the final §4 wording.
+- Existing `confidence: 4` notes in the vault that don't have explicit human-verification provenance should be flagged for re-confirmation or demoted.
