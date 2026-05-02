@@ -2,7 +2,10 @@
 type: pattern
 status: review
 origin_type: ai-proposed
-confidence: 4
+confidence: 3
+demoted_from: 4
+demoted_at: 2026-05-02
+demoted_reason: "AI self-set without human Type-2 verification — demoted per VAULT_RULES confidence scale"
 access: private
 truth_layer: working
 tags: [valor, harness, security, adversarial-review, meta-tools, hooks]
