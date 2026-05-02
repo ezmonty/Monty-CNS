@@ -2,7 +2,10 @@
 title: "Confidence and credence scales for AI-curated knowledge vaults"
 type: whitepaper
 origin_type: ai-proposed
-confidence: 2
+confidence: 4
+promoted_from: 2
+promoted_at: 2026-05-02
+promoted_by: human
 status: accepted
 open_questions: 0
 human_resolved_at: 2026-05-02

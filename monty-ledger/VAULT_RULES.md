@@ -68,3 +68,47 @@ If a note does not help retrieval, action, or understanding, it does not need to
 ## Rule 10. The vault must stay usable
 
 A more powerful system that increases friction too much is a worse system.
+
+## Rule 11. Confidence scale
+
+Every note carries `confidence: N` where N is 1–5. The level is composite (provenance-dominant) — see `00_Inbox/2026-05-01_whitepaper_confidence-and-credence-scales-for-ai-vault-systems.md` for the full thesis. Working definition:
+
+| Level | Name | Meaning |
+|---|---|---|
+| 1 | speculative | Hypothesis worth capturing before it's lost. Could be wrong. |
+| 2 | working | AI-proposed default. Internally consistent but unverified. **Default for new AI writes.** |
+| 3 | supported | Has in-body evidence (tests, citations, observed behavior). AI ceiling without human input. |
+| 4 | verified | Human has read and confirmed, OR a second independent human has ratified. Durable. |
+| 5 | canonical | Load-bearing. Other notes defer to this. Foundational decisions, irreversible facts. |
+
+### Promotion rules
+
+- **1 → 2:** AI may self-promote.
+- **2 → 3:** AI may self-promote IF in-body evidence is present. AI re-runs in a separate session count as supporting evidence.
+- **3 → 4:** HUMAN ONLY. AI Type-1 re-runs do not promote past 3.
+- **4 → 5:** HUMAN ONLY. Triggered by 30+ days without contradiction in the vault, OR a second independent human ratifier (collapses the soak requirement).
+
+### Demotion is NOT automatic
+
+When a higher-confidence note contradicts a lower-confidence one, the AI flags the contradiction and the human decides: synthesize the two notes into one, OR explicitly reject one (which becomes the demotion). Demotion is the *outcome* of human deliberation, never a mechanic the AI executes alone.
+
+### Type-1 vs Type-2 (why the AI ceiling sits at 3)
+
+Per Kahneman 2011: System 1 is fast/automatic/pattern-matched; System 2 is slow/deliberate/alternative-aware. AI in this system is exclusively Type-1. Re-running a smoke test is Type-1-twice, not Type-2. The 3 → 4 promotion gate is the deliberative pause that only humans currently practice.
+
+### Audit trail
+
+When a confidence level changes, the frontmatter records it:
+
+```yaml
+demoted_from: 4         # or promoted_from
+demoted_at: 2026-05-02  # or promoted_at
+demoted_reason: "..."   # or promoted_by
+```
+
+### AI behavior
+
+- Default new notes to `confidence: 2`.
+- Prompt the human at write time (`/learn` step 3.5, `/retro` step 2.5).
+- Refuse to set 4 or 5 without an explicit human number reply.
+- When a note has open questions, set `status: review-pending` + checklist body + register in `~/.claude/PENDING_REVIEWS.md` (stop hook surfaces the count).
